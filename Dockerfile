@@ -12,6 +12,8 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/drizzle.config.ts ./
 
 # Create uploads directory
 RUN mkdir -p uploads
@@ -21,4 +23,4 @@ ENV PORT=5000
 
 EXPOSE 5000
 
-CMD ["node", "dist/index.cjs"]
+CMD ["sh", "-c", "npx drizzle-kit push && node dist/index.cjs"]

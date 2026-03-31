@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { setStorage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,6 +61,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Use PostgreSQL when DATABASE_URL is provided, otherwise fall back to in-memory storage
+  if (process.env.DATABASE_URL) {
+    const { DatabaseStorage } = await import("./db-storage");
+    setStorage(new DatabaseStorage());
+    console.log("Using PostgreSQL database storage");
+  } else {
+    console.log("Using in-memory storage (no DATABASE_URL)");
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

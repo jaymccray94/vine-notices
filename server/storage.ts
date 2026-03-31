@@ -68,112 +68,112 @@ export interface Vendor {
 
 export interface IStorage {
   // Auth
-  getUserByEmail(email: string): User | undefined;
-  getUserById(id: string): User | undefined;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserById(id: string): Promise<User | undefined>;
 
   // Magic link codes
-  createMagicCode(email: string): string;
-  verifyMagicCode(email: string, code: string): boolean;
+  createMagicCode(email: string): Promise<string>;
+  verifyMagicCode(email: string, code: string): Promise<boolean>;
 
   // Users
-  listUsers(): SafeUser[];
-  createUser(input: InsertUser): SafeUser;
-  updateUser(id: string, data: Partial<InsertUser>): SafeUser | null;
-  deleteUser(id: string): boolean;
+  listUsers(): Promise<SafeUser[]>;
+  createUser(input: InsertUser): Promise<SafeUser>;
+  updateUser(id: string, data: Partial<InsertUser>): Promise<SafeUser | null>;
+  deleteUser(id: string): Promise<boolean>;
 
   // User ↔ Association
-  getUserAssociations(userId: string): (UserAssociation & { associationName: string })[];
-  setUserAssociations(userId: string, assignments: { associationId: string; permission: "manage" | "readonly" }[]): void;
-  canUserAccessAssociation(userId: string, associationId: string, requireManage?: boolean): boolean;
+  getUserAssociations(userId: string): Promise<(UserAssociation & { associationName: string })[]>;
+  setUserAssociations(userId: string, assignments: { associationId: string; permission: "manage" | "readonly" }[]): Promise<void>;
+  canUserAccessAssociation(userId: string, associationId: string, requireManage?: boolean): Promise<boolean>;
 
   // Associations
-  listAssociations(): Association[];
-  getAssociation(id: string): Association | undefined;
-  getAssociationBySlug(slug: string): Association | undefined;
-  createAssociation(input: InsertAssociation): Association;
-  updateAssociation(id: string, data: Partial<InsertAssociation>): Association | null;
-  deleteAssociation(id: string): boolean;
+  listAssociations(): Promise<Association[]>;
+  getAssociation(id: string): Promise<Association | undefined>;
+  getAssociationBySlug(slug: string): Promise<Association | undefined>;
+  createAssociation(input: InsertAssociation): Promise<Association>;
+  updateAssociation(id: string, data: Partial<InsertAssociation>): Promise<Association | null>;
+  deleteAssociation(id: string): Promise<boolean>;
 
   // Notices
-  listNotices(associationId: string): Notice[];
-  getNotice(id: string): Notice | undefined;
-  createNotice(input: InsertNotice, createdBy: string): Notice;
-  updateNotice(id: string, data: Partial<InsertNotice>): Notice | null;
-  deleteNotice(id: string): boolean;
-  setNoticePdf(noticeId: string, filename: string | null): void;
+  listNotices(associationId: string): Promise<Notice[]>;
+  getNotice(id: string): Promise<Notice | undefined>;
+  createNotice(input: InsertNotice, createdBy: string): Promise<Notice>;
+  updateNotice(id: string, data: Partial<InsertNotice>): Promise<Notice | null>;
+  deleteNotice(id: string): Promise<boolean>;
+  setNoticePdf(noticeId: string, filename: string | null): Promise<void>;
 
   // Meetings
-  listMeetings(associationId: string): Meeting[];
-  getMeeting(id: string): Meeting | undefined;
-  createMeeting(input: InsertMeeting, createdBy: string): Meeting;
-  updateMeeting(id: string, data: Partial<InsertMeeting>): Meeting | null;
-  deleteMeeting(id: string): boolean;
+  listMeetings(associationId: string): Promise<Meeting[]>;
+  getMeeting(id: string): Promise<Meeting | undefined>;
+  createMeeting(input: InsertMeeting, createdBy: string): Promise<Meeting>;
+  updateMeeting(id: string, data: Partial<InsertMeeting>): Promise<Meeting | null>;
+  deleteMeeting(id: string): Promise<boolean>;
 
   // Tickets
-  listTickets(associationId: string): Ticket[];
-  listAllTickets(): Ticket[];
-  getTicket(id: string): Ticket | undefined;
-  createTicket(input: InsertTicket, createdBy: string): Ticket;
-  updateTicket(id: string, data: Partial<InsertTicket>): Ticket | null;
-  deleteTicket(id: string): boolean;
+  listTickets(associationId: string): Promise<Ticket[]>;
+  listAllTickets(): Promise<Ticket[]>;
+  getTicket(id: string): Promise<Ticket | undefined>;
+  createTicket(input: InsertTicket, createdBy: string): Promise<Ticket>;
+  updateTicket(id: string, data: Partial<InsertTicket>): Promise<Ticket | null>;
+  deleteTicket(id: string): Promise<boolean>;
 
   // Insurance Policies
-  listInsurancePolicies(associationId: string): InsurancePolicy[];
-  getInsurancePolicy(id: string): InsurancePolicy | undefined;
-  createInsurancePolicy(input: InsertInsurancePolicy, createdBy: string): InsurancePolicy;
-  updateInsurancePolicy(id: string, data: Partial<InsertInsurancePolicy>): InsurancePolicy | null;
-  deleteInsurancePolicy(id: string): boolean;
+  listInsurancePolicies(associationId: string): Promise<InsurancePolicy[]>;
+  getInsurancePolicy(id: string): Promise<InsurancePolicy | undefined>;
+  createInsurancePolicy(input: InsertInsurancePolicy, createdBy: string): Promise<InsurancePolicy>;
+  updateInsurancePolicy(id: string, data: Partial<InsertInsurancePolicy>): Promise<InsurancePolicy | null>;
+  deleteInsurancePolicy(id: string): Promise<boolean>;
 
   // Mailing Requests
-  listMailingRequests(associationId: string): MailingRequest[];
-  getMailingRequest(id: string): MailingRequest | undefined;
-  createMailingRequest(input: InsertMailingRequest, createdBy: string): MailingRequest;
-  updateMailingRequest(id: string, data: Partial<InsertMailingRequest>): MailingRequest | null;
-  deleteMailingRequest(id: string): boolean;
+  listMailingRequests(associationId: string): Promise<MailingRequest[]>;
+  getMailingRequest(id: string): Promise<MailingRequest | undefined>;
+  createMailingRequest(input: InsertMailingRequest, createdBy: string): Promise<MailingRequest>;
+  updateMailingRequest(id: string, data: Partial<InsertMailingRequest>): Promise<MailingRequest | null>;
+  deleteMailingRequest(id: string): Promise<boolean>;
 
   // Onboarding Checklists
-  listOnboardingChecklists(associationId: string): OnboardingChecklist[];
-  getOnboardingChecklist(id: string): OnboardingChecklist | undefined;
-  createOnboardingChecklist(input: InsertOnboardingChecklist, createdBy: string): OnboardingChecklist;
-  updateOnboardingChecklist(id: string, data: Partial<InsertOnboardingChecklist>): OnboardingChecklist | null;
-  deleteOnboardingChecklist(id: string): boolean;
-  toggleOnboardingItem(checklistId: string, itemId: string): OnboardingChecklist | null;
+  listOnboardingChecklists(associationId: string): Promise<OnboardingChecklist[]>;
+  getOnboardingChecklist(id: string): Promise<OnboardingChecklist | undefined>;
+  createOnboardingChecklist(input: InsertOnboardingChecklist, createdBy: string): Promise<OnboardingChecklist>;
+  updateOnboardingChecklist(id: string, data: Partial<InsertOnboardingChecklist>): Promise<OnboardingChecklist | null>;
+  deleteOnboardingChecklist(id: string): Promise<boolean>;
+  toggleOnboardingItem(checklistId: string, itemId: string): Promise<OnboardingChecklist | null>;
 
   // Accounting Items
-  listAccountingItems(associationId: string): AccountingItem[];
-  getAccountingItem(id: string): AccountingItem | undefined;
-  createAccountingItem(input: InsertAccountingItem, createdBy: string): AccountingItem;
-  updateAccountingItem(id: string, data: Partial<InsertAccountingItem>): AccountingItem | null;
-  deleteAccountingItem(id: string): boolean;
+  listAccountingItems(associationId: string): Promise<AccountingItem[]>;
+  getAccountingItem(id: string): Promise<AccountingItem | undefined>;
+  createAccountingItem(input: InsertAccountingItem, createdBy: string): Promise<AccountingItem>;
+  updateAccountingItem(id: string, data: Partial<InsertAccountingItem>): Promise<AccountingItem | null>;
+  deleteAccountingItem(id: string): Promise<boolean>;
 
   // Invoices
-  listInvoices(associationId: string): Invoice[];
-  getInvoice(id: string): Invoice | undefined;
-  createInvoice(input: InsertInvoice, createdBy: string): Invoice;
-  updateInvoice(id: string, data: Partial<InsertInvoice> & { status?: Invoice["status"] }): Invoice | null;
-  deleteInvoice(id: string): boolean;
+  listInvoices(associationId: string): Promise<Invoice[]>;
+  getInvoice(id: string): Promise<Invoice | undefined>;
+  createInvoice(input: InsertInvoice, createdBy: string): Promise<Invoice>;
+  updateInvoice(id: string, data: Partial<InsertInvoice> & { status?: Invoice["status"] }): Promise<Invoice | null>;
+  deleteInvoice(id: string): Promise<boolean>;
 
   // Vendors
-  listVendors(associationId: string): Vendor[];
-  listAllVendors(): Vendor[];
-  getVendor(id: string): Vendor | undefined;
-  createVendor(input: Omit<Vendor, "id" | "createdAt">, createdBy: string): Vendor;
-  updateVendor(id: string, data: Partial<Vendor>): Vendor | null;
-  deleteVendor(id: string): boolean;
+  listVendors(associationId: string): Promise<Vendor[]>;
+  listAllVendors(): Promise<Vendor[]>;
+  getVendor(id: string): Promise<Vendor | undefined>;
+  createVendor(input: Omit<Vendor, "id" | "createdAt">, createdBy: string): Promise<Vendor>;
+  updateVendor(id: string, data: Partial<Vendor>): Promise<Vendor | null>;
+  deleteVendor(id: string): Promise<boolean>;
 
   // CINC API Settings
-  getCincSettings(): CincSettings;
-  updateCincSettings(data: Partial<CincSettings>): CincSettings;
-  addCincSyncLog(message: string, type: "info" | "error" | "success"): void;
+  getCincSettings(): Promise<CincSettings>;
+  updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings>;
+  addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void>;
 
   // Documents
-  listDocuments(associationId: string): AssociationDocument[];
-  listAllDocuments(): AssociationDocument[];
-  getDocument(id: string): AssociationDocument | undefined;
-  createDocument(input: Omit<AssociationDocument, "id" | "createdAt" | "updatedAt">, createdBy: string): AssociationDocument;
-  updateDocument(id: string, data: Partial<AssociationDocument>): AssociationDocument | null;
-  deleteDocument(id: string): boolean;
-  setDocumentFile(docId: string, filename: string | null): void;
+  listDocuments(associationId: string): Promise<AssociationDocument[]>;
+  listAllDocuments(): Promise<AssociationDocument[]>;
+  getDocument(id: string): Promise<AssociationDocument | undefined>;
+  createDocument(input: Omit<AssociationDocument, "id" | "createdAt" | "updatedAt">, createdBy: string): Promise<AssociationDocument>;
+  updateDocument(id: string, data: Partial<AssociationDocument>): Promise<AssociationDocument | null>;
+  deleteDocument(id: string): Promise<boolean>;
+  setDocumentFile(docId: string, filename: string | null): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -563,22 +563,22 @@ export class MemStorage implements IStorage {
   }
 
   // ── Auth ──
-  getUserByEmail(email: string): User | undefined {
+  async getUserByEmail(email: string): Promise<User | undefined> {
     return [...this.users.values()].find((u) => u.email.toLowerCase() === email.toLowerCase());
   }
-  getUserById(id: string): User | undefined {
+  async getUserById(id: string): Promise<User | undefined> {
     return this.users.get(id);
   }
 
   // ── Magic Codes ──
-  createMagicCode(email: string): string {
+  async createMagicCode(email: string): Promise<string> {
     // 6-digit numeric code, valid for 10 minutes
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const key = email.toLowerCase();
     this.magicCodes.set(key, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
     return code;
   }
-  verifyMagicCode(email: string, code: string): boolean {
+  async verifyMagicCode(email: string, code: string): Promise<boolean> {
     const key = email.toLowerCase();
     const entry = this.magicCodes.get(key);
     if (!entry) return false;
@@ -592,13 +592,13 @@ export class MemStorage implements IStorage {
   }
 
   // ── Users ──
-  listUsers(): SafeUser[] {
+  async listUsers(): Promise<SafeUser[]> {
     return [...this.users.values()].map((u) => {
       const safe: SafeUser = { ...u, associations: this.getUserAssociations(u.id) };
       return safe;
     });
   }
-  createUser(input: InsertUser): SafeUser {
+  async createUser(input: InsertUser): Promise<SafeUser> {
     const id = uid();
     const user: User = {
       id,
@@ -610,7 +610,7 @@ export class MemStorage implements IStorage {
     this.users.set(id, user);
     return { ...user };
   }
-  updateUser(id: string, data: Partial<InsertUser>): SafeUser | null {
+  async updateUser(id: string, data: Partial<InsertUser>): Promise<SafeUser | null> {
     const existing = this.users.get(id);
     if (!existing) return null;
     if (data.email) existing.email = data.email;
@@ -619,13 +619,13 @@ export class MemStorage implements IStorage {
     this.users.set(id, existing);
     return { ...existing, associations: this.getUserAssociations(id) };
   }
-  deleteUser(id: string): boolean {
+  async deleteUser(id: string): Promise<boolean> {
     this.userAssociations = this.userAssociations.filter((ua) => ua.userId !== id);
     return this.users.delete(id);
   }
 
   // ── User ↔ Association ──
-  getUserAssociations(userId: string): (UserAssociation & { associationName: string })[] {
+  async getUserAssociations(userId: string): Promise<(UserAssociation & { associationName: string })[]> {
     return this.userAssociations
       .filter((ua) => ua.userId === userId)
       .map((ua) => ({
@@ -633,13 +633,13 @@ export class MemStorage implements IStorage {
         associationName: this.associations.get(ua.associationId)?.name || "Unknown",
       }));
   }
-  setUserAssociations(userId: string, assignments: { associationId: string; permission: "manage" | "readonly" }[]): void {
+  async setUserAssociations(userId: string, assignments: { associationId: string; permission: "manage" | "readonly" }[]): Promise<void> {
     this.userAssociations = this.userAssociations.filter((ua) => ua.userId !== userId);
     for (const a of assignments) {
       this.userAssociations.push({ userId, associationId: a.associationId, permission: a.permission });
     }
   }
-  canUserAccessAssociation(userId: string, associationId: string, requireManage = false): boolean {
+  async canUserAccessAssociation(userId: string, associationId: string, requireManage = false): Promise<boolean> {
     const user = this.users.get(userId);
     if (!user) return false;
     if (user.role === "super_admin") return true;
@@ -650,29 +650,29 @@ export class MemStorage implements IStorage {
   }
 
   // ── Associations ──
-  listAssociations(): Association[] {
+  async listAssociations(): Promise<Association[]> {
     return [...this.associations.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
-  getAssociation(id: string): Association | undefined {
+  async getAssociation(id: string): Promise<Association | undefined> {
     return this.associations.get(id);
   }
-  getAssociationBySlug(slug: string): Association | undefined {
+  async getAssociationBySlug(slug: string): Promise<Association | undefined> {
     return [...this.associations.values()].find((a) => a.slug === slug);
   }
-  createAssociation(input: InsertAssociation): Association {
+  async createAssociation(input: InsertAssociation): Promise<Association> {
     const id = uid();
     const assoc: Association = { id, ...input, createdAt: now() };
     this.associations.set(id, assoc);
     return assoc;
   }
-  updateAssociation(id: string, data: Partial<InsertAssociation>): Association | null {
+  async updateAssociation(id: string, data: Partial<InsertAssociation>): Promise<Association | null> {
     const existing = this.associations.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.associations.set(id, updated);
     return updated;
   }
-  deleteAssociation(id: string): boolean {
+  async deleteAssociation(id: string): Promise<boolean> {
     for (const [nid, n] of this.notices) {
       if (n.associationId === id) this.notices.delete(nid);
     }
@@ -681,15 +681,15 @@ export class MemStorage implements IStorage {
   }
 
   // ── Notices ──
-  listNotices(associationId: string): Notice[] {
+  async listNotices(associationId: string): Promise<Notice[]> {
     return [...this.notices.values()]
       .filter((n) => n.associationId === associationId)
       .sort((a, b) => b.date.localeCompare(a.date));
   }
-  getNotice(id: string): Notice | undefined {
+  async getNotice(id: string): Promise<Notice | undefined> {
     return this.notices.get(id);
   }
-  createNotice(input: InsertNotice, createdBy: string): Notice {
+  async createNotice(input: InsertNotice, createdBy: string): Promise<Notice> {
     const id = uid();
     const notice: Notice = {
       id,
@@ -703,17 +703,17 @@ export class MemStorage implements IStorage {
     this.notices.set(id, notice);
     return notice;
   }
-  updateNotice(id: string, data: Partial<InsertNotice>): Notice | null {
+  async updateNotice(id: string, data: Partial<InsertNotice>): Promise<Notice | null> {
     const existing = this.notices.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.notices.set(id, updated);
     return updated;
   }
-  deleteNotice(id: string): boolean {
+  async deleteNotice(id: string): Promise<boolean> {
     return this.notices.delete(id);
   }
-  setNoticePdf(noticeId: string, filename: string | null): void {
+  async setNoticePdf(noticeId: string, filename: string | null): Promise<void> {
     const n = this.notices.get(noticeId);
     if (n) {
       n.pdfFilename = filename || undefined;
@@ -722,15 +722,15 @@ export class MemStorage implements IStorage {
   }
 
   // ── Meetings ──
-  listMeetings(associationId: string): Meeting[] {
+  async listMeetings(associationId: string): Promise<Meeting[]> {
     return [...this.meetings.values()]
       .filter((m) => m.associationId === associationId)
       .sort((a, b) => b.date.localeCompare(a.date));
   }
-  getMeeting(id: string): Meeting | undefined {
+  async getMeeting(id: string): Promise<Meeting | undefined> {
     return this.meetings.get(id);
   }
-  createMeeting(input: InsertMeeting, createdBy: string): Meeting {
+  async createMeeting(input: InsertMeeting, createdBy: string): Promise<Meeting> {
     const id = uid();
     const meeting: Meeting = {
       id,
@@ -745,31 +745,31 @@ export class MemStorage implements IStorage {
     this.meetings.set(id, meeting);
     return meeting;
   }
-  updateMeeting(id: string, data: Partial<InsertMeeting>): Meeting | null {
+  async updateMeeting(id: string, data: Partial<InsertMeeting>): Promise<Meeting | null> {
     const existing = this.meetings.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.meetings.set(id, updated);
     return updated;
   }
-  deleteMeeting(id: string): boolean {
+  async deleteMeeting(id: string): Promise<boolean> {
     return this.meetings.delete(id);
   }
 
   // ── Tickets ──
-  listTickets(associationId: string): Ticket[] {
+  async listTickets(associationId: string): Promise<Ticket[]> {
     return [...this.tickets.values()]
       .filter((t) => t.associationId === associationId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
-  listAllTickets(): Ticket[] {
+  async listAllTickets(): Promise<Ticket[]> {
     return [...this.tickets.values()]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
-  getTicket(id: string): Ticket | undefined {
+  async getTicket(id: string): Promise<Ticket | undefined> {
     return this.tickets.get(id);
   }
-  createTicket(input: InsertTicket, createdBy: string): Ticket {
+  async createTicket(input: InsertTicket, createdBy: string): Promise<Ticket> {
     const id = uid();
     const ticket: Ticket = {
       id,
@@ -780,27 +780,27 @@ export class MemStorage implements IStorage {
     this.tickets.set(id, ticket);
     return ticket;
   }
-  updateTicket(id: string, data: Partial<InsertTicket>): Ticket | null {
+  async updateTicket(id: string, data: Partial<InsertTicket>): Promise<Ticket | null> {
     const existing = this.tickets.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.tickets.set(id, updated);
     return updated;
   }
-  deleteTicket(id: string): boolean {
+  async deleteTicket(id: string): Promise<boolean> {
     return this.tickets.delete(id);
   }
 
   // ── Insurance Policies ──
-  listInsurancePolicies(associationId: string): InsurancePolicy[] {
+  async listInsurancePolicies(associationId: string): Promise<InsurancePolicy[]> {
     return [...this.insurancePolicies.values()]
       .filter((p) => p.associationId === associationId)
       .sort((a, b) => a.expirationDate.localeCompare(b.expirationDate));
   }
-  getInsurancePolicy(id: string): InsurancePolicy | undefined {
+  async getInsurancePolicy(id: string): Promise<InsurancePolicy | undefined> {
     return this.insurancePolicies.get(id);
   }
-  createInsurancePolicy(input: InsertInsurancePolicy, createdBy: string): InsurancePolicy {
+  async createInsurancePolicy(input: InsertInsurancePolicy, createdBy: string): Promise<InsurancePolicy> {
     const id = uid();
     const policy: InsurancePolicy = {
       id,
@@ -811,27 +811,27 @@ export class MemStorage implements IStorage {
     this.insurancePolicies.set(id, policy);
     return policy;
   }
-  updateInsurancePolicy(id: string, data: Partial<InsertInsurancePolicy>): InsurancePolicy | null {
+  async updateInsurancePolicy(id: string, data: Partial<InsertInsurancePolicy>): Promise<InsurancePolicy | null> {
     const existing = this.insurancePolicies.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.insurancePolicies.set(id, updated);
     return updated;
   }
-  deleteInsurancePolicy(id: string): boolean {
+  async deleteInsurancePolicy(id: string): Promise<boolean> {
     return this.insurancePolicies.delete(id);
   }
 
   // ── Mailing Requests ──
-  listMailingRequests(associationId: string): MailingRequest[] {
+  async listMailingRequests(associationId: string): Promise<MailingRequest[]> {
     return [...this.mailingRequests.values()]
       .filter((m) => m.associationId === associationId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
-  getMailingRequest(id: string): MailingRequest | undefined {
+  async getMailingRequest(id: string): Promise<MailingRequest | undefined> {
     return this.mailingRequests.get(id);
   }
-  createMailingRequest(input: InsertMailingRequest, createdBy: string): MailingRequest {
+  async createMailingRequest(input: InsertMailingRequest, createdBy: string): Promise<MailingRequest> {
     const id = uid();
     const mailing: MailingRequest = {
       id,
@@ -843,27 +843,27 @@ export class MemStorage implements IStorage {
     this.mailingRequests.set(id, mailing);
     return mailing;
   }
-  updateMailingRequest(id: string, data: Partial<InsertMailingRequest>): MailingRequest | null {
+  async updateMailingRequest(id: string, data: Partial<InsertMailingRequest>): Promise<MailingRequest | null> {
     const existing = this.mailingRequests.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.mailingRequests.set(id, updated);
     return updated;
   }
-  deleteMailingRequest(id: string): boolean {
+  async deleteMailingRequest(id: string): Promise<boolean> {
     return this.mailingRequests.delete(id);
   }
 
   // ── Onboarding Checklists ──
-  listOnboardingChecklists(associationId: string): OnboardingChecklist[] {
+  async listOnboardingChecklists(associationId: string): Promise<OnboardingChecklist[]> {
     return [...this.onboardingChecklists.values()]
       .filter((c) => c.associationId === associationId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
-  getOnboardingChecklist(id: string): OnboardingChecklist | undefined {
+  async getOnboardingChecklist(id: string): Promise<OnboardingChecklist | undefined> {
     return this.onboardingChecklists.get(id);
   }
-  createOnboardingChecklist(input: InsertOnboardingChecklist, createdBy: string): OnboardingChecklist {
+  async createOnboardingChecklist(input: InsertOnboardingChecklist, createdBy: string): Promise<OnboardingChecklist> {
     const id = uid();
     const checklist: OnboardingChecklist = {
       id,
@@ -880,7 +880,7 @@ export class MemStorage implements IStorage {
     this.onboardingChecklists.set(id, checklist);
     return checklist;
   }
-  updateOnboardingChecklist(id: string, data: Partial<InsertOnboardingChecklist>): OnboardingChecklist | null {
+  async updateOnboardingChecklist(id: string, data: Partial<InsertOnboardingChecklist>): Promise<OnboardingChecklist | null> {
     const existing = this.onboardingChecklists.get(id);
     if (!existing) return null;
     const updated: OnboardingChecklist = {
@@ -891,10 +891,10 @@ export class MemStorage implements IStorage {
     this.onboardingChecklists.set(id, updated);
     return updated;
   }
-  deleteOnboardingChecklist(id: string): boolean {
+  async deleteOnboardingChecklist(id: string): Promise<boolean> {
     return this.onboardingChecklists.delete(id);
   }
-  toggleOnboardingItem(checklistId: string, itemId: string): OnboardingChecklist | null {
+  async toggleOnboardingItem(checklistId: string, itemId: string): Promise<OnboardingChecklist | null> {
     const checklist = this.onboardingChecklists.get(checklistId);
     if (!checklist) return null;
     const items = checklist.items.map((item) => {
@@ -912,15 +912,15 @@ export class MemStorage implements IStorage {
   }
 
   // ── Accounting Items ──
-  listAccountingItems(associationId: string): AccountingItem[] {
+  async listAccountingItems(associationId: string): Promise<AccountingItem[]> {
     return [...this.accountingItems.values()]
       .filter((a) => a.associationId === associationId)
       .sort((a, b) => b.dueDate.localeCompare(a.dueDate));
   }
-  getAccountingItem(id: string): AccountingItem | undefined {
+  async getAccountingItem(id: string): Promise<AccountingItem | undefined> {
     return this.accountingItems.get(id);
   }
-  createAccountingItem(input: InsertAccountingItem, createdBy: string): AccountingItem {
+  async createAccountingItem(input: InsertAccountingItem, createdBy: string): Promise<AccountingItem> {
     const id = uid();
     const item: AccountingItem = {
       id,
@@ -932,27 +932,27 @@ export class MemStorage implements IStorage {
     this.accountingItems.set(id, item);
     return item;
   }
-  updateAccountingItem(id: string, data: Partial<InsertAccountingItem>): AccountingItem | null {
+  async updateAccountingItem(id: string, data: Partial<InsertAccountingItem>): Promise<AccountingItem | null> {
     const existing = this.accountingItems.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.accountingItems.set(id, updated);
     return updated;
   }
-  deleteAccountingItem(id: string): boolean {
+  async deleteAccountingItem(id: string): Promise<boolean> {
     return this.accountingItems.delete(id);
   }
 
   // ── Invoices ──
-  listInvoices(associationId: string): Invoice[] {
+  async listInvoices(associationId: string): Promise<Invoice[]> {
     return [...this.invoices.values()]
       .filter((inv) => inv.associationId === associationId)
       .sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate));
   }
-  getInvoice(id: string): Invoice | undefined {
+  async getInvoice(id: string): Promise<Invoice | undefined> {
     return this.invoices.get(id);
   }
-  createInvoice(input: InsertInvoice, createdBy: string): Invoice {
+  async createInvoice(input: InsertInvoice, createdBy: string): Promise<Invoice> {
     const id = uid();
     const invoice: Invoice = {
       id,
@@ -976,7 +976,7 @@ export class MemStorage implements IStorage {
     this.invoices.set(id, invoice);
     return invoice;
   }
-  updateInvoice(id: string, data: Partial<InsertInvoice> & { status?: Invoice["status"] }): Invoice | null {
+  async updateInvoice(id: string, data: Partial<InsertInvoice> & { status?: Invoice["status"] }): Promise<Invoice | null> {
     const existing = this.invoices.get(id);
     if (!existing) return null;
     const { lineItems, ...rest } = data;
@@ -996,49 +996,49 @@ export class MemStorage implements IStorage {
     this.invoices.set(id, updated);
     return updated;
   }
-  deleteInvoice(id: string): boolean {
+  async deleteInvoice(id: string): Promise<boolean> {
     return this.invoices.delete(id);
   }
 
   // ── Vendors ──
-  listVendors(associationId: string): Vendor[] {
+  async listVendors(associationId: string): Promise<Vendor[]> {
     return [...this.vendors.values()]
       .filter((v) => v.associationId === associationId)
       .sort((a, b) => a.name.localeCompare(b.name));
   }
-  listAllVendors(): Vendor[] {
+  async listAllVendors(): Promise<Vendor[]> {
     return [...this.vendors.values()]
       .sort((a, b) => a.name.localeCompare(b.name));
   }
-  getVendor(id: string): Vendor | undefined {
+  async getVendor(id: string): Promise<Vendor | undefined> {
     return this.vendors.get(id);
   }
-  createVendor(input: Omit<Vendor, "id" | "createdAt">, createdBy: string): Vendor {
+  async createVendor(input: Omit<Vendor, "id" | "createdAt">, createdBy: string): Promise<Vendor> {
     const id = uid();
     const vendor: Vendor = { id, ...input, createdBy, createdAt: now() };
     this.vendors.set(id, vendor);
     return vendor;
   }
-  updateVendor(id: string, data: Partial<Vendor>): Vendor | null {
+  async updateVendor(id: string, data: Partial<Vendor>): Promise<Vendor | null> {
     const existing = this.vendors.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data };
     this.vendors.set(id, updated);
     return updated;
   }
-  deleteVendor(id: string): boolean {
+  async deleteVendor(id: string): Promise<boolean> {
     return this.vendors.delete(id);
   }
 
   // ── CINC API Settings ──
-  getCincSettings(): CincSettings {
+  async getCincSettings(): Promise<CincSettings> {
     return { ...this.cincSettings };
   }
-  updateCincSettings(data: Partial<CincSettings>): CincSettings {
+  async updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings> {
     this.cincSettings = { ...this.cincSettings, ...data };
     return { ...this.cincSettings };
   }
-  addCincSyncLog(message: string, type: "info" | "error" | "success"): void {
+  async addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void> {
     this.cincSettings.syncLog.unshift({ timestamp: now(), message, type });
     if (this.cincSettings.syncLog.length > 50) {
       this.cincSettings.syncLog = this.cincSettings.syncLog.slice(0, 50);
@@ -1048,35 +1048,35 @@ export class MemStorage implements IStorage {
   // ── Documents ──
   private documents = new Map<string, AssociationDocument>();
 
-  listDocuments(associationId: string): AssociationDocument[] {
+  async listDocuments(associationId: string): Promise<AssociationDocument[]> {
     return [...this.documents.values()]
       .filter((d) => d.associationId === associationId)
       .sort((a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title));
   }
-  listAllDocuments(): AssociationDocument[] {
+  async listAllDocuments(): Promise<AssociationDocument[]> {
     return [...this.documents.values()]
       .sort((a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title));
   }
-  getDocument(id: string): AssociationDocument | undefined {
+  async getDocument(id: string): Promise<AssociationDocument | undefined> {
     return this.documents.get(id);
   }
-  createDocument(input: Omit<AssociationDocument, "id" | "createdAt" | "updatedAt">, createdBy: string): AssociationDocument {
+  async createDocument(input: Omit<AssociationDocument, "id" | "createdAt" | "updatedAt">, createdBy: string): Promise<AssociationDocument> {
     const id = uid();
     const doc: AssociationDocument = { id, ...input, createdBy, createdAt: now(), updatedAt: now() };
     this.documents.set(id, doc);
     return doc;
   }
-  updateDocument(id: string, data: Partial<AssociationDocument>): AssociationDocument | null {
+  async updateDocument(id: string, data: Partial<AssociationDocument>): Promise<AssociationDocument | null> {
     const existing = this.documents.get(id);
     if (!existing) return null;
     const updated = { ...existing, ...data, updatedAt: now() };
     this.documents.set(id, updated);
     return updated;
   }
-  deleteDocument(id: string): boolean {
+  async deleteDocument(id: string): Promise<boolean> {
     return this.documents.delete(id);
   }
-  setDocumentFile(docId: string, filename: string | null): void {
+  async setDocumentFile(docId: string, filename: string | null): Promise<void> {
     const d = this.documents.get(docId);
     if (d) {
       d.filename = filename || undefined;
@@ -1124,4 +1124,8 @@ export const FLORIDA_DOCUMENT_CATEGORIES = [
   { id: "other", label: "Other Documents", description: "Miscellaneous association records", retention: "7 years", statute: "" },
 ] as const;
 
-export const storage = new MemStorage();
+export let storage: IStorage = new MemStorage();
+
+export function setStorage(s: IStorage) {
+  storage = s;
+}

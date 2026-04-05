@@ -67,6 +67,11 @@ const upload = multer({
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
+  // Health check endpoint for Railway (no auth required)
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok" });
+  });
+
   const meetingNoticesStore: any[] = [];
   const meetingMinutesStore: any[] = [];
 

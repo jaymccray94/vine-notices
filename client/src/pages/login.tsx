@@ -15,7 +15,6 @@ export default function LoginPage() {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [demoCode, setDemoCode] = useState<string | null>(null);
   const [codeSent, setCodeSent] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -31,10 +30,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const result = await requestMagicLink(email);
-      if (result.demoCode) {
-        setDemoCode(result.demoCode);
-      }
+      await requestMagicLink(email);
       setCodeSent(true);
       setStep("code");
     } catch (err: any) {
@@ -101,7 +97,6 @@ export default function LoginPage() {
     setStep("email");
     setCode(["", "", "", "", "", ""]);
     setError("");
-    setDemoCode(null);
     setCodeSent(false);
   }
 
@@ -167,14 +162,6 @@ export default function LoginPage() {
                 <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md" data-testid="text-code-error">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                   {error}
-                </div>
-              )}
-
-              {/* Demo code display */}
-              {demoCode && (
-                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2.5 text-center" data-testid="demo-code-display">
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium mb-1">Demo Mode — Your code:</p>
-                  <p className="text-2xl font-mono font-bold tracking-[0.3em] text-amber-700 dark:text-amber-300">{demoCode}</p>
                 </div>
               )}
 

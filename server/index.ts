@@ -49,8 +49,12 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      // Don't log response bodies for sensitive endpoints
+      const sensitiveRoutes = ["/api/auth/", "/api/cinc/settings", "/api/cinc/test"];
+      const isSensitive = sensitiveRoutes.some(r => path.startsWith(r));
+      if (capturedJsonResponse && !isSensitive) {
+        const responseStr = JSON.stringify(capturedJsonResponse);
+        logLine += ` :: ${responseStr.length > 500 ? responseStr.slice(0, 500) + "..." : responseStr}`;
       }
 
       log(logLine);
@@ -82,7 +86,7 @@ app.use((req, res, next) => {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    return res.status(status).json({ error: message });
   });
 
   // importantly only setup vite in development and after

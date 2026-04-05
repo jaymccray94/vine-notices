@@ -10,11 +10,54 @@ import { magicLinkRequestSchema, magicLinkVerifySchema, insertUserSchema, insert
 // ── Session tokens ──
 const sessions = new Map<string, { userId: string; expiresAt: number }>();
 
+// Periodically clean up expired sessions (every 15 minutes)
+setInterval(() => {
+  const now = Date.now();
+  sessions.forEach((session, token) => {
+    if (session.expiresAt < now) {
+      sessions.delete(token);
+    }
+  });
+}, 15 * 60 * 1000);
+
 function createToken(userId: string): string {
   const token = crypto.randomBytes(32).toString("hex");
   sessions.set(token, { userId, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
   return token;
 }
+
+// ── Rate limiting ──
+const rateLimits = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimit(windowMs: number, maxRequests: number) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const entry = rateLimits.get(key);
+
+    if (!entry || entry.resetAt < now) {
+      rateLimits.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    if (entry.count >= maxRequests) {
+      return res.status(429).json({ error: "Too many requests. Please try again later." });
+    }
+
+    entry.count++;
+    next();
+  };
+}
+
+// Clean up rate limit entries periodically
+setInterval(() => {
+  const now = Date.now();
+  rateLimits.forEach((entry, key) => {
+    if (entry.resetAt < now) {
+      rateLimits.delete(key);
+    }
+  });
+}, 60 * 1000);
 
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -74,8 +117,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── Magic Link Auth ──
   // ══════════════════════════════════════════════
 
+  // Rate limit: 5 requests per 15 minutes for magic link, 10 attempts per 15 minutes for verify
+  const authRateLimit = rateLimit(15 * 60 * 1000, 5);
+  const verifyRateLimit = rateLimit(15 * 60 * 1000, 10);
+
   // Step 1: Request a magic code
-  app.post("/api/auth/magic-link", async (req, res) => {
+  app.post("/api/auth/magic-link", authRateLimit, async (req, res) => {
     const parsed = magicLinkRequestSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid email" });
 
@@ -88,24 +135,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const code = await storage.createMagicCode(parsed.data.email);
 
     // ──────────────────────────────────────────
-    // 🔌 EMAIL INTEGRATION POINT
+    // EMAIL INTEGRATION POINT
     // In production, send `code` to `parsed.data.email` via your email provider.
-    // Examples:
-    //   - Gmail API: Use googleapis to send from your domain
-    //   - Resend:    await resend.emails.send({ to: email, subject: "Your login code", html: `<p>Your code: <b>${code}</b></p>` })
-    //   - SendGrid:  await sgMail.send({ to: email, subject: "Your login code", text: `Your code: ${code}` })
-    //
-    // For this demo, the code is logged to the server console.
+    // For this demo, the code is logged to the server console only.
     // ──────────────────────────────────────────
-    console.log(`\n🔑 Magic link code for ${parsed.data.email}: ${code}\n`);
+    console.log(`\n Magic link code for ${parsed.data.email}: ${code}\n`);
 
-    // In demo mode, also return the code so the UI can show it
-    const isDemoMode = !process.env.EMAIL_PROVIDER;
-    res.json({ sent: true, ...(isDemoMode ? { demoCode: code } : {}) });
+    // Never expose the code in the API response — check server logs in demo mode
+    res.json({ sent: true });
   });
 
   // Step 2: Verify the code and log in
-  app.post("/api/auth/verify-code", async (req, res) => {
+  app.post("/api/auth/verify-code", verifyRateLimit, async (req, res) => {
     const parsed = magicLinkVerifySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
 
@@ -741,9 +782,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
+    if (!req.body.name || typeof req.body.name !== "string" || req.body.name.trim().length === 0) {
+      return res.status(400).json({ error: "Vendor name is required" });
+    }
     const vendor = await storage.createVendor({
       associationId: req.params.associationId,
-      name: req.body.name,
+      name: req.body.name.trim(),
       contactName: req.body.contactName || null,
       phone: req.body.phone || null,
       email: req.body.email || null,
@@ -800,9 +844,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
+    if (!req.body.title || typeof req.body.title !== "string" || req.body.title.trim().length === 0) {
+      return res.status(400).json({ error: "Document title is required" });
+    }
+    if (!req.body.category || typeof req.body.category !== "string") {
+      return res.status(400).json({ error: "Document category is required" });
+    }
+    const validCategories = FLORIDA_DOCUMENT_CATEGORIES.map(c => c.id);
+    if (!validCategories.includes(req.body.category)) {
+      return res.status(400).json({ error: `Invalid category. Must be one of: ${validCategories.join(", ")}` });
+    }
     const doc = await storage.createDocument({
       associationId: req.params.associationId,
-      title: req.body.title,
+      title: req.body.title.trim(),
       category: req.body.category,
       description: req.body.description || null,
       status: req.body.status || "current",
@@ -913,20 +967,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Never send the full secret to the frontend
     res.json({
       ...settings,
-      clientSecret: settings.clientSecret ? "****" + settings.clientSecret.slice(-4) : "",
+      clientSecret: settings.clientSecret ? "••••••••" : "",
     });
   });
 
   app.patch("/api/cinc/settings", requireAuth, requireSuperAdmin, async (req, res) => {
     // Don't overwrite secret with masked version
     const data = { ...req.body };
-    if (data.clientSecret && data.clientSecret.startsWith("****")) {
+    if (data.clientSecret && (data.clientSecret.startsWith("****") || data.clientSecret.startsWith("••••"))) {
       delete data.clientSecret;
     }
     const updated = await storage.updateCincSettings(data);
     res.json({
       ...updated,
-      clientSecret: updated.clientSecret ? "****" + updated.clientSecret.slice(-4) : "",
+      clientSecret: updated.clientSecret ? "••••••••" : "",
     });
   });
 
@@ -935,7 +989,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const settings = await storage.getCincSettings();
       const clientId = req.body.clientId || settings.clientId;
-      const clientSecret = req.body.clientSecret?.startsWith("****") ? settings.clientSecret : (req.body.clientSecret || settings.clientSecret);
+      const clientSecret = (req.body.clientSecret?.startsWith("****") || req.body.clientSecret?.startsWith("••••")) ? settings.clientSecret : (req.body.clientSecret || settings.clientSecret);
       const env = (req.body.environment || settings.environment) as "uat" | "production";
       const scope = req.body.scope || settings.scope || "cincapi.all";
 
@@ -1048,16 +1102,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/public/:slug/notices", async (req, res) => {
     const assoc = await storage.getAssociationBySlug(req.params.slug);
     if (!assoc) return res.status(404).json({ error: "Association not found" });
-    const notices = await storage.listNotices(assoc.id).map((n) => ({
-      id: n.id,
-      date: n.date,
-      title: n.title,
-      type: n.type,
-      description: n.description,
-      pdfUrl: n.pdfFilename ? `/api/uploads/${n.pdfFilename}` : undefined,
-      meetingUrl: n.meetingUrl || undefined,
-      postedDate: n.postedDate,
-    }));
+    const allNotices = await storage.listNotices(assoc.id);
+    const notices = allNotices
+      .filter((n) => n.isPublic && n.status === "current")
+      .map((n) => ({
+        id: n.id,
+        date: n.date,
+        title: n.title,
+        type: n.type,
+        description: n.description,
+        pdfUrl: n.pdfFilename ? `/api/uploads/${n.pdfFilename}` : undefined,
+        meetingUrl: n.meetingUrl || undefined,
+        postedDate: n.postedDate,
+      }));
     res.json({ association: { name: assoc.name, slug: assoc.slug, primaryColor: assoc.primaryColor, accentColor: assoc.accentColor, darkColor: assoc.darkColor }, notices });
   });
 
@@ -1109,7 +1166,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── CINC Associations (public) ──
   // ══════════════════════════════════════════════
 
-  app.get("/api/cinc/associations", async (req, res) => {
+  app.get("/api/cinc/associations", requireAuth, async (req, res) => {
     try {
       const settings = await storage.getCincSettings();
       if (!settings?.clientId || !settings?.clientSecret) {
@@ -1127,22 +1184,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── AI Meeting Notices ──
   // ══════════════════════════════════════════════
 
-  app.get("/api/meeting-notices", async (req, res) => {
+  app.get("/api/meeting-notices", requireAuth, async (req, res) => {
     const assocCode = req.query.assocCode as string;
     const list = assocCode ? meetingNoticesStore.filter(n => n.associationCode === assocCode) : meetingNoticesStore;
     res.json(list);
   });
-  app.post("/api/meeting-notices", async (req, res) => {
+  app.post("/api/meeting-notices", requireAuth, async (req, res) => {
     meetingNoticesStore.push(req.body);
     res.status(201).json(req.body);
   });
-  app.patch("/api/meeting-notices/:id", async (req, res) => {
+  app.patch("/api/meeting-notices/:id", requireAuth, async (req, res) => {
     const idx = meetingNoticesStore.findIndex(n => n.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: "Not found" });
     Object.assign(meetingNoticesStore[idx], req.body);
     res.json(meetingNoticesStore[idx]);
   });
-  app.delete("/api/meeting-notices/:id", async (req, res) => {
+  app.delete("/api/meeting-notices/:id", requireAuth, async (req, res) => {
     const idx = meetingNoticesStore.findIndex(n => n.id === req.params.id);
     if (idx !== -1) meetingNoticesStore.splice(idx, 1);
     res.json({ ok: true });
@@ -1152,22 +1209,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── AI Meeting Minutes ──
   // ══════════════════════════════════════════════
 
-  app.get("/api/meeting-minutes", async (req, res) => {
+  app.get("/api/meeting-minutes", requireAuth, async (req, res) => {
     const assocCode = req.query.assocCode as string;
     const list = assocCode ? meetingMinutesStore.filter(m => m.associationCode === assocCode) : meetingMinutesStore;
     res.json(list);
   });
-  app.post("/api/meeting-minutes", async (req, res) => {
+  app.post("/api/meeting-minutes", requireAuth, async (req, res) => {
     meetingMinutesStore.push(req.body);
     res.status(201).json(req.body);
   });
-  app.patch("/api/meeting-minutes/:id", async (req, res) => {
+  app.patch("/api/meeting-minutes/:id", requireAuth, async (req, res) => {
     const idx = meetingMinutesStore.findIndex(m => m.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: "Not found" });
     Object.assign(meetingMinutesStore[idx], req.body);
     res.json(meetingMinutesStore[idx]);
   });
-  app.delete("/api/meeting-minutes/:id", async (req, res) => {
+  app.delete("/api/meeting-minutes/:id", requireAuth, async (req, res) => {
     const idx = meetingMinutesStore.findIndex(m => m.id === req.params.id);
     if (idx !== -1) meetingMinutesStore.splice(idx, 1);
     res.json({ ok: true });
@@ -1177,7 +1234,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── Push notice to CINC ──
   // ══════════════════════════════════════════════
 
-  app.post("/api/cinc/push-meeting-notice", async (req, res) => {
+  app.post("/api/cinc/push-meeting-notice", requireAuth, requireSuperAdmin, async (req, res) => {
     try {
       const { assocCode, type, content, meetingDate } = req.body;
       // For now, just log/acknowledge — full CINC correspondence write requires production endpoint
@@ -1275,7 +1332,7 @@ ${minutes.length > 0 ? minutes.map(m => `<div class="card">
 <p class="vine">Managed by <a href="https://vinemgt.com" target="_blank">Vine Management Group</a></p>
 </body></html>`;
     res.setHeader("Content-Type", "text/html");
-    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
     res.send(html);
   });
 

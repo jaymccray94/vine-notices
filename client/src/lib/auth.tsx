@@ -7,7 +7,7 @@ interface AuthState {
   user: SafeUser | null;
   token: string | null;
   loading: boolean;
-  requestMagicLink: (email: string) => Promise<{ sent: boolean; demoCode?: string }>;
+  requestMagicLink: (email: string) => Promise<{ sent: boolean }>;
   verifyCode: (email: string, code: string) => Promise<void>;
   logout: () => void;
 }

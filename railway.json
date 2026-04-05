@@ -1,13 +1,14 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile"
+    "builder": "NIXPACKS",
+    "buildCommand": "npm install && npm run build"
   },
   "deploy": {
-    "startCommand": "npx drizzle-kit push && node dist/index.cjs",
+    "startCommand": "sh -c 'npx drizzle-kit push && npm start'",
     "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
+    "restartPolicyMaxRetries": 5
   }
 }

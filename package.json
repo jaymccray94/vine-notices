@@ -11,6 +11,8 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1024.0",
+    "@aws-sdk/s3-request-presigner": "^3.1024.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@radix-ui/react-accordion": "^1.2.4",
@@ -50,6 +52,7 @@
     "embla-carousel-react": "^8.6.0",
     "express": "^5.0.1",
     "framer-motion": "^11.13.1",
+    "google-auth-library": "^10.6.2",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
     "multer": "^2.1.1",

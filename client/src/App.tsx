@@ -67,6 +67,7 @@ const APP_NAV = [
   { id: "invoices", label: "AI Invoices", icon: Sparkles, route: "/invoices", status: "live" as const },
   { id: "ai-notices", label: "AI Meeting Notices", icon: Sparkles, route: "/ai/meeting-notices", status: "live" as const },
   { id: "ai-minutes", label: "AI Meeting Minutes", icon: ClipboardList, route: "/ai/meeting-minutes", status: "live" as const },
+  { id: "cinc-settings", label: "CINC Integration", icon: Settings, route: "/cinc-settings", status: "live" as const },
 ];
 
 // ── Global navigation (cross-association) ──
@@ -132,7 +133,7 @@ function PortalLayout() {
   const PageIcon = getPageIcon(location);
 
   // Pages that don't require an association selection
-  const isGlobalPage = location === "/global/tickets" || location === "/associations" || location === "/users" || location === "/cinc-settings" || location.startsWith("/preview/") || location.startsWith("/ai/");
+  const isGlobalPage = location === "/global/tickets" || location === "/associations" || location === "/users" || location.startsWith("/preview/") || location.startsWith("/ai/");
 
   function handleNavigate(path: string) {
     if (path.startsWith("/hub/")) {
@@ -280,17 +281,6 @@ function PortalLayout() {
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={location === "/cinc-settings"}
-                        >
-                          <Link href="/cinc-settings" data-testid="sidebar-cinc-settings">
-                            <Settings className="w-4 h-4" />
-                            <span className="text-[13px]">CINC Settings</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>
@@ -391,7 +381,9 @@ function PortalLayout() {
               {/* Global pages */}
               <Route path="/global/tickets" component={AdminGlobalTicketsPage} />
               {/* Admin pages */}
-              {isSuperAdmin && <Route path="/cinc-settings" component={AdminCincSettingsPage} />}
+              <Route path="/cinc-settings">
+                {selectedAssocId ? <AdminCincSettingsPage associationId={selectedAssocId} key={`cinc-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
+              </Route>
               {/* Embed preview */}
               <Route path="/preview/:slug">
                 {(params) => <EmbedPreviewPage slug={params.slug} />}

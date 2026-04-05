@@ -50,17 +50,17 @@ interface TestResult {
   }>;
 }
 
-export default function AdminCincSettingsPage() {
+export default function AdminCincSettingsPage({ associationId }: { associationId: string }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [showSecret, setShowSecret] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const isSuperAdmin = user?.role === "super_admin";
+  const canManage = user?.role === "super_admin" || user?.role === "association_admin";
 
   const { data: settings, isLoading } = useQuery<CincSettings>({
-    queryKey: ["/api/cinc/settings"],
+    queryKey: [`/api/cinc/settings/${associationId}`],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/cinc/settings");
+      const res = await apiRequest("GET", `/api/cinc/settings/${associationId}`);
       return res.json();
     },
     refetchInterval: (query) => {
@@ -99,18 +99,18 @@ export default function AdminCincSettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof currentForm) => {
-      const res = await apiRequest("PATCH", "/api/cinc/settings", data);
+      const res = await apiRequest("PATCH", `/api/cinc/settings/${associationId}`, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cinc/settings"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/cinc/settings/${associationId}`] });
       toast({ title: "Settings saved" });
     },
   });
 
   const testMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/cinc/test", currentForm);
+      const res = await apiRequest("POST", `/api/cinc/test/${associationId}`, currentForm);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Connection test failed");
@@ -119,7 +119,7 @@ export default function AdminCincSettingsPage() {
     },
     onSuccess: (data) => {
       setTestResult(data);
-      queryClient.invalidateQueries({ queryKey: ["/api/cinc/settings"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/cinc/settings/${associationId}`] });
       toast({ title: `Connected: ${data.totalAssociations} associations found` });
     },
     onError: (err: any) => {
@@ -130,11 +130,11 @@ export default function AdminCincSettingsPage() {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/cinc/sync");
+      const res = await apiRequest("POST", `/api/cinc/sync/${associationId}`);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cinc/settings"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/cinc/settings/${associationId}`] });
       toast({ title: "Sync started" });
     },
     onError: () => {
@@ -208,7 +208,7 @@ export default function AdminCincSettingsPage() {
             <Switch
               checked={currentForm.enabled}
               onCheckedChange={(v) => updateForm("enabled", v)}
-              disabled={!isSuperAdmin}
+              disabled={!canManage}
               data-testid="switch-cinc-enabled"
             />
           </div>
@@ -220,7 +220,7 @@ export default function AdminCincSettingsPage() {
             <Select
               value={currentForm.environment}
               onValueChange={(v) => updateForm("environment", v)}
-              disabled={!isSuperAdmin}
+              disabled={!canManage}
             >
               <SelectTrigger className="h-9" data-testid="select-cinc-env">
                 <SelectValue />
@@ -245,7 +245,7 @@ export default function AdminCincSettingsPage() {
                 value={currentForm.clientId}
                 onChange={(e) => updateForm("clientId", e.target.value)}
                 placeholder="e.g. 5a2fdaa8-be36-4e05-9a1f-0f658ccd22b4"
-                disabled={!isSuperAdmin}
+                disabled={!canManage}
                 className="h-9 font-mono text-xs"
                 data-testid="input-cinc-client-id"
               />
@@ -261,7 +261,7 @@ export default function AdminCincSettingsPage() {
                 value={currentForm.clientSecret}
                 onChange={(e) => updateForm("clientSecret", e.target.value)}
                 placeholder="Enter your CINC client secret"
-                disabled={!isSuperAdmin}
+                disabled={!canManage}
                 className="h-9 font-mono text-xs"
                 data-testid="input-cinc-secret"
               />
@@ -283,7 +283,7 @@ export default function AdminCincSettingsPage() {
               value={currentForm.scope}
               onChange={(e) => updateForm("scope", e.target.value)}
               placeholder="cincapi.all"
-              disabled={!isSuperAdmin}
+              disabled={!canManage}
               className="h-9 font-mono text-xs"
               data-testid="input-cinc-scope"
             />
@@ -292,7 +292,7 @@ export default function AdminCincSettingsPage() {
             </p>
           </div>
 
-          {isSuperAdmin && (
+          {canManage && (
             <div className="flex justify-end gap-2 pt-2">
               <Button
                 variant="outline"

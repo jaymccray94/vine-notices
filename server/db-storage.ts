@@ -704,17 +704,17 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
 
-  // ── CINC API Settings ──
-  async getCincSettings(): Promise<CincSettings> {
-    const row = await db.query.cincSettings.findFirst({ where: eq(s.cincSettings.id, "singleton") });
+  // ── CINC API Settings (per-association) ──
+  async getCincSettings(associationId: string): Promise<CincSettings> {
+    const row = await db.query.cincSettings.findFirst({ where: eq(s.cincSettings.associationId, associationId) });
     if (!row) {
-      // Create default settings
       const defaults: CincSettings = {
         clientId: "", clientSecret: "", environment: "uat", scope: "cincapi.all",
         enabled: false, lastSyncAt: null, syncStatus: "idle", syncLog: [],
       };
+      const id = crypto.randomUUID();
       await db.insert(s.cincSettings).values({
-        id: "singleton", clientId: "", clientSecret: "", environment: "uat",
+        id, associationId, clientId: "", clientSecret: "", environment: "uat",
         scope: "cincapi.all", enabled: false, syncStatus: "idle", syncLog: [],
       });
       return defaults;
@@ -729,8 +729,8 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings> {
-    const current = await this.getCincSettings();
+  async updateCincSettings(associationId: string, data: Partial<CincSettings>): Promise<CincSettings> {
+    const current = await this.getCincSettings(associationId);
     const updated = { ...current, ...data };
     await db.update(s.cincSettings).set({
       clientId: updated.clientId, clientSecret: updated.clientSecret,
@@ -738,17 +738,17 @@ export class DatabaseStorage implements IStorage {
       enabled: updated.enabled, lastSyncAt: updated.lastSyncAt,
       syncStatus: updated.syncStatus, syncLog: updated.syncLog,
       lastSyncData: updated.lastSyncData,
-    }).where(eq(s.cincSettings.id, "singleton"));
+    }).where(eq(s.cincSettings.associationId, associationId));
     return updated;
   }
 
-  async addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void> {
-    const settings = await this.getCincSettings();
+  async addCincSyncLog(associationId: string, message: string, type: "info" | "error" | "success"): Promise<void> {
+    const settings = await this.getCincSettings(associationId);
     settings.syncLog.unshift({ timestamp: now(), message, type });
     if (settings.syncLog.length > 50) {
       settings.syncLog = settings.syncLog.slice(0, 50);
     }
-    await db.update(s.cincSettings).set({ syncLog: settings.syncLog }).where(eq(s.cincSettings.id, "singleton"));
+    await db.update(s.cincSettings).set({ syncLog: settings.syncLog }).where(eq(s.cincSettings.associationId, associationId));
   }
 
   // ── Documents ──

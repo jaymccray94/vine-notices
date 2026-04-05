@@ -9,6 +9,7 @@ interface AuthState {
   loading: boolean;
   requestMagicLink: (email: string) => Promise<{ sent: boolean }>;
   verifyCode: (email: string, code: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthState>({
   loading: false,
   requestMagicLink: async () => ({ sent: false }),
   verifyCode: async () => {},
+  loginWithGoogle: async () => {},
   logout: () => {},
 });
 
@@ -45,6 +47,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user);
   }, []);
 
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    const res = await apiRequest("POST", "/api/auth/google", { credential });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Google login failed");
+    }
+    const data = await res.json();
+    storedToken = data.token;
+    setToken(data.token);
+    setUser(data.user);
+  }, []);
+
   const logout = useCallback(() => {
     if (storedToken) {
       fetch("/api/auth/logout", {
@@ -59,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, requestMagicLink, verifyCode, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, requestMagicLink, verifyCode, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

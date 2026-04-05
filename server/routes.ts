@@ -6,6 +6,8 @@ import fs from "fs";
 import crypto from "crypto";
 import { storage, FLORIDA_DOCUMENT_CATEGORIES } from "./storage";
 import { magicLinkRequestSchema, magicLinkVerifySchema, insertUserSchema, insertAssociationSchema, insertNoticeSchema, insertMeetingSchema, insertTicketSchema, insertInsurancePolicySchema, insertMailingRequestSchema, insertOnboardingChecklistSchema, insertAccountingItemSchema, insertInvoiceSchema } from "@shared/schema";
+import { isS3Enabled, uploadToS3, getS3DownloadUrl, deleteFromS3 } from "./s3";
+import { OAuth2Client } from "google-auth-library";
 
 // ── Session tokens ──
 const sessions = new Map<string, { userId: string; expiresAt: number }>();
@@ -84,29 +86,54 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
 const uploadDir = path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+const ALLOWED_MIMES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "image/jpeg",
+  "image/png",
+];
+
+// When S3 is enabled, use memory storage so we can upload the buffer to S3.
+// Otherwise, use disk storage as before.
+const multerStorage = isS3Enabled()
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadDir),
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        cb(null, crypto.randomUUID() + ext);
+      },
+    });
+
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadDir),
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      cb(null, crypto.randomUUID() + ext);
-    },
-  }),
+  storage: multerStorage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = [
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "image/jpeg",
-      "image/png",
-    ];
-    if (allowed.includes(file.mimetype)) cb(null, true);
+    if (ALLOWED_MIMES.includes(file.mimetype)) cb(null, true);
     else cb(new Error("File type not supported. Accepted: PDF, Word, Excel, JPEG, PNG."));
   },
 });
+
+/** Save an uploaded file (to S3 or local disk) and return the filename. */
+async function saveUploadedFile(file: Express.Multer.File): Promise<string> {
+  if (isS3Enabled()) {
+    return uploadToS3(file.buffer, file.originalname, file.mimetype);
+  }
+  return file.filename;
+}
+
+/** Delete a previously uploaded file (from S3 or local disk). */
+async function deleteUploadedFile(filename: string): Promise<void> {
+  if (isS3Enabled()) {
+    await deleteFromS3(filename);
+  } else {
+    const filePath = path.join(uploadDir, filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+}
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
@@ -171,6 +198,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const token = req.headers.authorization?.replace("Bearer ", "");
     if (token) sessions.delete(token);
     res.json({ ok: true });
+  });
+
+  // ── Google OAuth ──
+  // Set GOOGLE_CLIENT_ID env var to enable Google Sign-In
+  app.get("/api/auth/google/config", async (_req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    res.json({ enabled: !!clientId, clientId: clientId || null });
+  });
+
+  app.post("/api/auth/google", async (req, res) => {
+    const googleClientId = process.env.GOOGLE_CLIENT_ID;
+    if (!googleClientId) {
+      return res.status(400).json({ error: "Google Sign-In is not configured" });
+    }
+
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ error: "Missing credential token" });
+    }
+
+    try {
+      const client = new OAuth2Client(googleClientId);
+      const ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: googleClientId,
+      });
+      const payload = ticket.getPayload();
+      if (!payload?.email) {
+        return res.status(401).json({ error: "Invalid Google token" });
+      }
+
+      // Look up user by email — only existing users can sign in
+      const user = await storage.getUserByEmail(payload.email);
+      if (!user) {
+        return res.status(403).json({ error: "No account found for this Google email. Contact your administrator." });
+      }
+
+      const token = createToken(user.id);
+      const associations = await storage.getUserAssociations(user.id);
+      res.json({ token, user: { ...user, associations } });
+    } catch (err: any) {
+      res.status(401).json({ error: "Google authentication failed" });
+    }
   });
 
   // ══════════════════════════════════════════════
@@ -287,8 +357,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (notice.pdfFilename) {
-      const filePath = path.join(uploadDir, notice.pdfFilename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      await deleteUploadedFile(notice.pdfFilename);
     }
     await storage.deleteNotice(req.params.id);
     res.json({ ok: true });
@@ -304,11 +373,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     if (notice.pdfFilename) {
-      const old = path.join(uploadDir, notice.pdfFilename);
-      if (fs.existsSync(old)) fs.unlinkSync(old);
+      await deleteUploadedFile(notice.pdfFilename);
     }
-    await storage.setNoticePdf(req.params.id, req.file.filename);
-    res.json({ filename: req.file.filename });
+    const filename = await saveUploadedFile(req.file);
+    await storage.setNoticePdf(req.params.id, filename);
+    res.json({ filename });
   });
 
   app.delete("/api/notices/:id/pdf", requireAuth, async (req, res) => {
@@ -319,14 +388,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (notice.pdfFilename) {
-      const filePath = path.join(uploadDir, notice.pdfFilename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      await deleteUploadedFile(notice.pdfFilename);
     }
     await storage.setNoticePdf(req.params.id, null);
     res.json({ ok: true });
   });
 
   app.get("/api/uploads/:filename", async (req, res) => {
+    if (isS3Enabled()) {
+      // Redirect to a presigned S3 URL
+      const url = await getS3DownloadUrl(req.params.filename);
+      return res.redirect(url);
+    }
     const filePath = path.join(uploadDir, req.params.filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File not found" });
     res.setHeader("Content-Type", "application/pdf");
@@ -889,8 +962,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (doc.filename) {
-      const filePath = path.join(uploadDir, doc.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      await deleteUploadedFile(doc.filename);
     }
     await storage.deleteDocument(req.params.id);
     res.json({ ok: true });
@@ -906,12 +978,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     if (doc.filename) {
-      const old = path.join(uploadDir, doc.filename);
-      if (fs.existsSync(old)) fs.unlinkSync(old);
+      await deleteUploadedFile(doc.filename);
     }
-    await storage.setDocumentFile(req.params.id, req.file.filename);
+    const filename = await saveUploadedFile(req.file);
+    await storage.setDocumentFile(req.params.id, filename);
     await storage.updateDocument(req.params.id, { fileSize: req.file.size });
-    res.json({ filename: req.file.filename });
+    res.json({ filename });
   });
 
   // ══════════════════════════════════════════════
@@ -962,32 +1034,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return resp.json();
   }
 
-  app.get("/api/cinc/settings", requireAuth, requireSuperAdmin, async (_req, res) => {
-    const settings = await storage.getCincSettings();
-    // Never send the full secret to the frontend
+  // CINC settings are now per-association ��� manage permission required
+  app.get("/api/cinc/settings/:associationId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { associationId } = req.params;
+    if (!await storage.canUserAccessAssociation(user.id, associationId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    const settings = await storage.getCincSettings(associationId);
     res.json({
       ...settings,
       clientSecret: settings.clientSecret ? "••••••••" : "",
     });
   });
 
-  app.patch("/api/cinc/settings", requireAuth, requireSuperAdmin, async (req, res) => {
-    // Don't overwrite secret with masked version
+  app.patch("/api/cinc/settings/:associationId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { associationId } = req.params;
+    if (!await storage.canUserAccessAssociation(user.id, associationId, true)) {
+      return res.status(403).json({ error: "Manage permission required" });
+    }
     const data = { ...req.body };
     if (data.clientSecret && (data.clientSecret.startsWith("****") || data.clientSecret.startsWith("••••"))) {
       delete data.clientSecret;
     }
-    const updated = await storage.updateCincSettings(data);
+    const updated = await storage.updateCincSettings(associationId, data);
     res.json({
       ...updated,
       clientSecret: updated.clientSecret ? "••••••••" : "",
     });
   });
 
-  // Test connection to CINC API
-  app.post("/api/cinc/test", requireAuth, requireSuperAdmin, async (req, res) => {
+  // Test connection to CINC API (per-association)
+  app.post("/api/cinc/test/:associationId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { associationId } = req.params;
+    if (!await storage.canUserAccessAssociation(user.id, associationId, true)) {
+      return res.status(403).json({ error: "Manage permission required" });
+    }
     try {
-      const settings = await storage.getCincSettings();
+      const settings = await storage.getCincSettings(associationId);
       const clientId = req.body.clientId || settings.clientId;
       const clientSecret = (req.body.clientSecret?.startsWith("****") || req.body.clientSecret?.startsWith("••••")) ? settings.clientSecret : (req.body.clientSecret || settings.clientSecret);
       const env = (req.body.environment || settings.environment) as "uat" | "production";
@@ -1002,8 +1088,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const activeCount = associations.filter((a: any) => a.isActive).length;
 
       // Save credentials if test passes
-      await storage.updateCincSettings({ clientId, clientSecret, environment: env, scope });
-      await storage.addCincSyncLog(`Connection test successful (${env}): ${associations.length} associations found (${activeCount} active)`, "success");
+      await storage.updateCincSettings(associationId, { clientId, clientSecret, environment: env, scope });
+      await storage.addCincSyncLog(associationId, `Connection test successful (${env}): ${associations.length} associations found (${activeCount} active)`, "success");
 
       res.json({
         success: true,
@@ -1021,32 +1107,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         })),
       });
     } catch (err: any) {
-      await storage.addCincSyncLog(`Connection test failed: ${err.message}`, "error");
+      await storage.addCincSyncLog(associationId, `Connection test failed: ${err.message}`, "error");
       res.status(400).json({ error: err.message });
     }
   });
 
-  // Real sync with CINC API
-  app.post("/api/cinc/sync", requireAuth, requireSuperAdmin, async (_req, res) => {
-    const settings = await storage.getCincSettings();
+  // Sync with CINC API (per-association)
+  app.post("/api/cinc/sync/:associationId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { associationId } = req.params;
+    if (!await storage.canUserAccessAssociation(user.id, associationId, true)) {
+      return res.status(403).json({ error: "Manage permission required" });
+    }
+    const settings = await storage.getCincSettings(associationId);
     if (!settings.clientId || !settings.clientSecret) {
-      return res.status(400).json({ error: "CINC credentials not configured" });
+      return res.status(400).json({ error: "CINC credentials not configured for this association" });
     }
 
-    await storage.updateCincSettings({ syncStatus: "syncing" });
-    await storage.addCincSyncLog("Starting sync with CINC API...", "info");
+    await storage.updateCincSettings(associationId, { syncStatus: "syncing" });
+    await storage.addCincSyncLog(associationId, "Starting sync with CINC API...", "info");
     res.json({ message: "Sync started" });
 
     try {
       const token = await getCincToken(settings.clientId, settings.clientSecret, settings.environment, settings.scope);
-      await storage.addCincSyncLog(`Authenticated with CINC ${settings.environment.toUpperCase()} server`, "info");
+      await storage.addCincSyncLog(associationId, `Authenticated with CINC ${settings.environment.toUpperCase()} server`, "info");
 
-      // Fetch associations
       const associations = await cincApiGet(token, settings.environment, "/management/1/Associations") as any[];
       const activeAssocs = associations.filter((a: any) => a.isActive);
-      await storage.addCincSyncLog(`Found ${associations.length} associations (${activeAssocs.length} active)`, "success");
+      await storage.addCincSyncLog(associationId, `Found ${associations.length} associations (${activeAssocs.length} active)`, "success");
 
-      // Fetch vendors for first active association
       let vendorCount = 0;
       let workOrderCount = 0;
       if (activeAssocs.length > 0) {
@@ -1054,22 +1143,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         try {
           const vendors = await cincApiGet(token, settings.environment, `/management/1/Vendors?AssocId=${firstAssocId}`) as any[];
           vendorCount = vendors.length;
-          await storage.addCincSyncLog(`Found ${vendors.length} vendors for ${activeAssocs[0].Associationname}`, "success");
+          await storage.addCincSyncLog(associationId, `Found ${vendors.length} vendors for ${activeAssocs[0].Associationname}`, "success");
         } catch {
-          await storage.addCincSyncLog("Vendors endpoint not available", "info");
+          await storage.addCincSyncLog(associationId, "Vendors endpoint not available", "info");
         }
 
         try {
           const workOrders = await cincApiGet(token, settings.environment, `/management/1/WorkOrders?AssocId=${firstAssocId}`) as any[];
           workOrderCount = workOrders.length;
-          await storage.addCincSyncLog(`Found ${workOrders.length} work orders for ${activeAssocs[0].Associationname}`, "success");
+          await storage.addCincSyncLog(associationId, `Found ${workOrders.length} work orders for ${activeAssocs[0].Associationname}`, "success");
         } catch {
-          await storage.addCincSyncLog("Work Orders endpoint not available", "info");
+          await storage.addCincSyncLog(associationId, "Work Orders endpoint not available", "info");
         }
       }
 
-      await storage.addCincSyncLog("Sync completed successfully", "success");
-      await storage.updateCincSettings({
+      await storage.addCincSyncLog(associationId, "Sync completed successfully", "success");
+      await storage.updateCincSettings(associationId, {
         syncStatus: "success",
         lastSyncAt: new Date().toISOString(),
         lastSyncData: {
@@ -1079,14 +1168,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
       });
     } catch (err: any) {
-      await storage.addCincSyncLog(`Sync failed: ${err.message}`, "error");
-      await storage.updateCincSettings({ syncStatus: "error" });
+      await storage.addCincSyncLog(associationId, `Sync failed: ${err.message}`, "error");
+      await storage.updateCincSettings(associationId, { syncStatus: "error" });
     }
   });
 
-  // Get sync log
-  app.get("/api/cinc/sync-log", requireAuth, requireSuperAdmin, async (_req, res) => {
-    const settings = await storage.getCincSettings();
+  // Get sync log (per-association)
+  app.get("/api/cinc/sync-log/:associationId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { associationId } = req.params;
+    if (!await storage.canUserAccessAssociation(user.id, associationId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    const settings = await storage.getCincSettings(associationId);
     res.json({
       status: settings.syncStatus,
       lastSyncAt: settings.lastSyncAt,
@@ -1166,9 +1260,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── CINC Associations (public) ──
   // ══════════════════════════════════════════════
 
-  app.get("/api/cinc/associations", requireAuth, async (req, res) => {
+  app.get("/api/cinc/associations/:associationId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { associationId } = req.params;
+    if (!await storage.canUserAccessAssociation(user.id, associationId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
     try {
-      const settings = await storage.getCincSettings();
+      const settings = await storage.getCincSettings(associationId);
       if (!settings?.clientId || !settings?.clientSecret) {
         return res.json([]);
       }
@@ -1234,7 +1333,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── Push notice to CINC ──
   // ══════════════════════════════════════════════
 
-  app.post("/api/cinc/push-meeting-notice", requireAuth, requireSuperAdmin, async (req, res) => {
+  app.post("/api/cinc/push-meeting-notice/:associationId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { associationId } = req.params;
+    if (!await storage.canUserAccessAssociation(user.id, associationId, true)) {
+      return res.status(403).json({ error: "Manage permission required" });
+    }
     try {
       const { assocCode, type, content, meetingDate } = req.body;
       // For now, just log/acknowledge — full CINC correspondence write requires production endpoint

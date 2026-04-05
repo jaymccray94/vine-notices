@@ -1,15 +1,31 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { AlertTriangle, Loader2, Leaf, Mail, ArrowLeft, CheckCircle } from "lucide-react";
 
 type Step = "email" | "code";
 
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: any) => void;
+          renderButton: (element: HTMLElement, config: any) => void;
+        };
+      };
+    };
+  }
+}
+
 export default function LoginPage() {
-  const { requestMagicLink, verifyCode } = useAuth();
+  const { requestMagicLink, verifyCode, loginWithGoogle } = useAuth();
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState(["", "", "", "", "", ""]);
@@ -17,6 +33,55 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  // Check if Google OAuth is configured
+  const { data: googleConfig } = useQuery<{ enabled: boolean; clientId: string | null }>({
+    queryKey: ["/api/auth/google/config"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/auth/google/config");
+      return res.json();
+    },
+  });
+
+  const handleGoogleCallback = useCallback(async (response: any) => {
+    setError("");
+    setLoading(true);
+    try {
+      await loginWithGoogle(response.credential);
+    } catch (err: any) {
+      setError(err.message || "Google sign-in failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [loginWithGoogle]);
+
+  // Load Google Sign-In script and render button
+  useEffect(() => {
+    if (!googleConfig?.enabled || !googleConfig.clientId) return;
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (window.google && googleButtonRef.current) {
+        window.google.accounts.id.initialize({
+          client_id: googleConfig.clientId,
+          callback: handleGoogleCallback,
+        });
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: "outline",
+          size: "large",
+          width: "100%",
+          text: "signin_with",
+          shape: "rectangular",
+        });
+      }
+    };
+    document.head.appendChild(script);
+    return () => { document.head.removeChild(script); };
+  }, [googleConfig, handleGoogleCallback]);
 
   // Focus first code input when switching to code step
   useEffect(() => {
@@ -57,7 +122,7 @@ export default function LoginPage() {
   function handleCodeInput(index: number, value: string) {
     if (!/^\d*$/.test(value)) return; // digits only
     const newCode = [...code];
-    
+
     // Handle paste of full code
     if (value.length > 1) {
       const digits = value.replace(/\D/g, "").slice(0, 6).split("");
@@ -116,40 +181,55 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent className="pb-8">
           {step === "email" ? (
-            <form onSubmit={handleRequestCode} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4">
               {error && (
                 <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md" data-testid="text-login-error">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                   {error}
                 </div>
               )}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email" className="text-sm font-medium">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="jay@vinemgt.com"
-                  required
-                  autoFocus
-                  data-testid="input-email"
-                />
-              </div>
-              <Button type="submit" disabled={loading} className="w-full mt-1" data-testid="button-send-code">
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Mail className="w-4 h-4 mr-2" />
-                    Send Login Code
-                  </>
-                )}
-              </Button>
-              <p className="text-xs text-center text-muted-foreground mt-1">
-                We'll send a 6-digit code to your email
-              </p>
-            </form>
+
+              {/* Google Sign-In button */}
+              {googleConfig?.enabled && (
+                <>
+                  <div ref={googleButtonRef} className="flex justify-center" data-testid="google-signin-button" />
+                  <div className="flex items-center gap-3">
+                    <Separator className="flex-1" />
+                    <span className="text-xs text-muted-foreground">or</span>
+                    <Separator className="flex-1" />
+                  </div>
+                </>
+              )}
+
+              <form onSubmit={handleRequestCode} className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="jay@vinemgt.com"
+                    required
+                    autoFocus={!googleConfig?.enabled}
+                    data-testid="input-email"
+                  />
+                </div>
+                <Button type="submit" disabled={loading} className="w-full mt-1" data-testid="button-send-code">
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4 mr-2" />
+                      Send Login Code
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-center text-muted-foreground mt-1">
+                  We'll send a 6-digit code to your email
+                </p>
+              </form>
+            </div>
           ) : (
             <div className="flex flex-col gap-4">
               {/* Sent confirmation */}

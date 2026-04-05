@@ -185,9 +185,10 @@ export const magicCodes = pgTable("magic_codes", {
   used: boolean("used").notNull().default(false),
 });
 
-// ── CINC Settings (singleton) ──
+// ── CINC Settings (per-association) ──
 export const cincSettings = pgTable("cinc_settings", {
-  id: text("id").primaryKey().default("singleton"),
+  id: text("id").primaryKey(),
+  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }).unique(),
   clientId: text("client_id").notNull().default(""),
   clientSecret: text("client_secret").notNull().default(""),
   environment: text("environment").notNull().default("uat"),

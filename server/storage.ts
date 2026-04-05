@@ -161,10 +161,10 @@ export interface IStorage {
   updateVendor(id: string, data: Partial<Vendor>): Promise<Vendor | null>;
   deleteVendor(id: string): Promise<boolean>;
 
-  // CINC API Settings
-  getCincSettings(): Promise<CincSettings>;
-  updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings>;
-  addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void>;
+  // CINC API Settings (per-association)
+  getCincSettings(associationId: string): Promise<CincSettings>;
+  updateCincSettings(associationId: string, data: Partial<CincSettings>): Promise<CincSettings>;
+  addCincSyncLog(associationId: string, message: string, type: "info" | "error" | "success"): Promise<void>;
 
   // Documents
   listDocuments(associationId: string): Promise<AssociationDocument[]>;
@@ -190,16 +190,20 @@ export class MemStorage implements IStorage {
   private accountingItems = new Map<string, AccountingItem>();
   private invoices = new Map<string, Invoice>();
   private vendors = new Map<string, Vendor>();
-  private cincSettings: CincSettings = {
-    clientId: "",
-    clientSecret: "",
-    environment: "uat",
-    scope: "cincapi.all",
-    enabled: false,
-    lastSyncAt: null,
-    syncStatus: "idle",
-    syncLog: [],
-  };
+  private cincSettingsMap = new Map<string, CincSettings>();
+
+  private getDefaultCincSettings(): CincSettings {
+    return {
+      clientId: "",
+      clientSecret: "",
+      environment: "uat",
+      scope: "cincapi.all",
+      enabled: false,
+      lastSyncAt: null,
+      syncStatus: "idle",
+      syncLog: [],
+    };
+  }
 
   constructor() {
     // Seed super admin
@@ -1030,19 +1034,25 @@ export class MemStorage implements IStorage {
     return this.vendors.delete(id);
   }
 
-  // ── CINC API Settings ──
-  async getCincSettings(): Promise<CincSettings> {
-    return { ...this.cincSettings };
+  // ── CINC API Settings (per-association) ──
+  async getCincSettings(associationId: string): Promise<CincSettings> {
+    const existing = this.cincSettingsMap.get(associationId);
+    if (existing) return { ...existing };
+    return this.getDefaultCincSettings();
   }
-  async updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings> {
-    this.cincSettings = { ...this.cincSettings, ...data };
-    return { ...this.cincSettings };
+  async updateCincSettings(associationId: string, data: Partial<CincSettings>): Promise<CincSettings> {
+    const current = await this.getCincSettings(associationId);
+    const updated = { ...current, ...data };
+    this.cincSettingsMap.set(associationId, updated);
+    return { ...updated };
   }
-  async addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void> {
-    this.cincSettings.syncLog.unshift({ timestamp: now(), message, type });
-    if (this.cincSettings.syncLog.length > 50) {
-      this.cincSettings.syncLog = this.cincSettings.syncLog.slice(0, 50);
+  async addCincSyncLog(associationId: string, message: string, type: "info" | "error" | "success"): Promise<void> {
+    const settings = await this.getCincSettings(associationId);
+    settings.syncLog.unshift({ timestamp: now(), message, type });
+    if (settings.syncLog.length > 50) {
+      settings.syncLog = settings.syncLog.slice(0, 50);
     }
+    this.cincSettingsMap.set(associationId, settings);
   }
 
   // ── Documents ──

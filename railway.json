@@ -5,8 +5,8 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "node dist/index.cjs",
-    "healthcheckPath": "/api/auth/me",
+    "startCommand": "npx drizzle-kit push && node dist/index.cjs",
+    "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

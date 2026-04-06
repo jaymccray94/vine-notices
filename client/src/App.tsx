@@ -6,6 +6,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
+import { OnboardingTour } from "@/components/onboarding-tour";
+import { GlobalSearch, useGlobalSearchShortcut } from "@/components/global-search";
+import { initTheme, getTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Association } from "@shared/schema";
 import {
   Sidebar,
@@ -26,9 +29,9 @@ import {
   Building2, FileText, Users, LogOut, Leaf, Video,
   TicketCheck, ClipboardList, Mail, Calculator, Shield,
   Sparkles, LayoutDashboard, Settings, FolderOpen, Store,
-  Globe,
+  Globe, Search, Sun, Moon, Monitor, ChevronRight,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import LoginPage from "@/pages/login";
 import PortalDashboard from "@/pages/portal-dashboard";
@@ -51,7 +54,11 @@ import EmbedNoticesPage from "@/pages/embed-notices";
 import EmbedMeetingsPage from "@/pages/embed-meetings";
 import AIMeetingNoticesPage from "@/pages/ai-meeting-notices";
 import AIMeetingMinutesPage from "@/pages/ai-meeting-minutes";
+import SettingsHub from "@/pages/settings-hub";
 import NotFound from "@/pages/not-found";
+
+// Initialize theme on load
+initTheme();
 
 // ── App navigation config ──
 const APP_NAV = [
@@ -95,6 +102,7 @@ function getPageTitle(location: string, currentAssoc?: Association | null) {
   if (location === "/cinc-settings") return "CINC Settings";
   if (location.startsWith("/preview/")) return "Embed Preview";
   if (location === "/users") return "Users";
+  if (location === "/settings") return "Settings";
   return "";
 }
 
@@ -107,6 +115,7 @@ function getPageIcon(location: string) {
   if (location === "/cinc-settings") return Settings;
   if (location.startsWith("/preview/")) return Building2;
   if (location === "/users") return Users;
+  if (location === "/settings") return Settings;
   return LayoutDashboard;
 }
 
@@ -114,6 +123,11 @@ function PortalLayout() {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
   const [selectedAssocId, setSelectedAssocId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<Theme>(getTheme());
+
+  // Global search shortcut (Cmd+K)
+  useGlobalSearchShortcut(useCallback(() => setSearchOpen(true), []));
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["/api/associations"],
@@ -131,8 +145,16 @@ function PortalLayout() {
   const pageTitle = getPageTitle(location, currentAssoc);
   const PageIcon = getPageIcon(location);
 
+  function cycleTheme() {
+    const next: Theme = currentTheme === "light" ? "dark" : currentTheme === "dark" ? "system" : "light";
+    setCurrentTheme(next);
+    setTheme(next);
+  }
+
+  const ThemeIcon = currentTheme === "dark" ? Moon : currentTheme === "light" ? Sun : Monitor;
+
   // Pages that don't require an association selection
-  const isGlobalPage = location === "/global/tickets" || location === "/associations" || location === "/users" || location === "/cinc-settings" || location.startsWith("/preview/") || location.startsWith("/ai/");
+  const isGlobalPage = location === "/global/tickets" || location === "/associations" || location === "/users" || location === "/cinc-settings" || location === "/settings" || location.startsWith("/preview/") || location.startsWith("/ai/");
 
   function handleNavigate(path: string) {
     if (path.startsWith("/hub/")) {
@@ -298,7 +320,28 @@ function PortalLayout() {
             )}
           </SidebarContent>
 
-          <SidebarFooter className="p-3">
+          <SidebarFooter className="p-3 space-y-1">
+            <button
+              onClick={cycleTheme}
+              className="flex items-center gap-2 text-[13px] text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
+              data-testid="button-theme-toggle"
+              title={`Theme: ${currentTheme}`}
+            >
+              <ThemeIcon className="w-3.5 h-3.5" />
+              <span className="capitalize">{currentTheme} Mode</span>
+            </button>
+            {isSuperAdmin && (
+              <SidebarMenuButton
+                asChild
+                isActive={location === "/settings"}
+                className="text-sidebar-foreground/60 hover:text-sidebar-foreground"
+              >
+                <Link href="/settings" data-testid="sidebar-settings">
+                  <Settings className="w-3.5 h-3.5" />
+                  <span className="text-[13px]">Settings</span>
+                </Link>
+              </SidebarMenuButton>
+            )}
             <button
               onClick={logout}
               className="flex items-center gap-2 text-[13px] text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
@@ -312,24 +355,52 @@ function PortalLayout() {
 
         <div className="flex flex-col flex-1 min-w-0">
           <header className="flex items-center justify-between px-4 py-2 border-b bg-background">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
-              {pageTitle && (
-                <div className="flex items-center gap-2">
-                  <PageIcon className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">{pageTitle}</span>
-                </div>
-              )}
+              {/* Breadcrumb navigation */}
+              <nav className="flex items-center gap-1 text-sm min-w-0">
+                <button
+                  onClick={() => setLocation("/")}
+                  className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                >
+                  Hub
+                </button>
+                {currentAssoc && !isGlobalPage && location !== "/" && (
+                  <>
+                    <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+                    <button
+                      onClick={() => setLocation("/")}
+                      className="text-muted-foreground hover:text-foreground transition-colors truncate max-w-[120px] sm:max-w-none"
+                    >
+                      {currentAssoc.name}
+                    </button>
+                  </>
+                )}
+                {pageTitle && location !== "/" && (
+                  <>
+                    <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+                    <div className="flex items-center gap-1.5 font-medium truncate">
+                      <PageIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="truncate">{isGlobalPage ? pageTitle : pageTitle.split(" — ").pop()}</span>
+                    </div>
+                  </>
+                )}
+              </nav>
             </div>
-            {currentAssoc && !isGlobalPage && location !== "/" && (
+            <div className="flex items-center gap-2">
+              {/* Search button */}
               <button
-                onClick={() => setLocation("/")}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                data-testid="button-back-to-hub"
+                onClick={() => setSearchOpen(true)}
+                className="flex items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground border rounded-md hover:bg-muted transition-colors"
+                data-testid="button-search"
               >
-                Back to Hub
+                <Search className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Search</span>
+                <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 text-[9px] font-mono bg-muted rounded">
+                  {navigator.platform?.includes("Mac") ? "\u2318" : "Ctrl"}K
+                </kbd>
               </button>
-            )}
+            </div>
           </header>
 
           <main className="flex-1 overflow-auto">
@@ -396,6 +467,7 @@ function PortalLayout() {
               <Route path="/preview/:slug">
                 {(params) => <EmbedPreviewPage slug={params.slug} />}
               </Route>
+              {isSuperAdmin && <Route path="/settings" component={SettingsHub} />}
               {isSuperAdmin && <Route path="/associations" component={AdminAssociationsPage} />}
               {isSuperAdmin && <Route path="/users" component={AdminUsersPage} />}
               <Route component={NotFound} />
@@ -404,6 +476,15 @@ function PortalLayout() {
           <PerplexityAttribution />
         </div>
       </div>
+
+      {/* Global overlays */}
+      <GlobalSearch
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={(path) => setLocation(path)}
+        associationId={selectedAssocId}
+      />
+      <OnboardingTour />
     </SidebarProvider>
   );
 }

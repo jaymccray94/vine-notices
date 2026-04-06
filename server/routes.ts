@@ -885,6 +885,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return resp.json();
   }
 
+  // ══════════════════════════════════════════════
+  // ── Branding Settings ──
+  // ══════════════════════════════════════════════
+
+  app.get("/api/branding", async (_req, res) => {
+    // Public endpoint - returns branding for the current org
+    try {
+      const db = await import("./db");
+      const schema = await import("../shared/db-schema");
+      const { eq } = await import("drizzle-orm");
+      const row = await db.db.query.brandingSettings.findFirst({
+        where: eq(schema.brandingSettings.organizationId, 1),
+      });
+      if (!row) {
+        return res.json({
+          companyName: "Vine Management",
+          primaryColor: "#317C3C",
+          sidebarColor: "#1B3E1E",
+          accentColor: "#8BC53F",
+        });
+      }
+      res.json(row);
+    } catch {
+      res.json({
+        companyName: "Vine Management",
+        primaryColor: "#317C3C",
+        sidebarColor: "#1B3E1E",
+        accentColor: "#8BC53F",
+      });
+    }
+  });
+
+  app.patch("/api/branding", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const db = await import("./db");
+      const schema = await import("../shared/db-schema");
+      const { eq } = await import("drizzle-orm");
+
+      const existing = await db.db.query.brandingSettings.findFirst({
+        where: eq(schema.brandingSettings.organizationId, 1),
+      });
+
+      const data = {
+        companyName: req.body.companyName,
+        primaryColor: req.body.primaryColor,
+        sidebarColor: req.body.sidebarColor,
+        accentColor: req.body.accentColor,
+        footerText: req.body.footerText,
+        logoUrl: req.body.logoUrl,
+        faviconUrl: req.body.faviconUrl,
+        organizationId: 1,
+        updatedAt: new Date(),
+      };
+
+      if (existing) {
+        await db.db.update(schema.brandingSettings).set(data).where(eq(schema.brandingSettings.id, existing.id));
+      } else {
+        await db.db.insert(schema.brandingSettings).values(data);
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════
+  // ── CINC API Integration ──
+  // ══════════════════════════════════════════════
+
   app.get("/api/cinc/settings", requireAuth, requireSuperAdmin, async (_req, res) => {
     const settings = await storage.getCincSettings();
     // Never send the full secret to the frontend

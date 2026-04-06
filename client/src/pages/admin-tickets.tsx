@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { EmptyState } from "@/components/empty-state";
 import { useAuth } from "@/lib/auth";
 import type { Ticket } from "@shared/schema";
 import { TICKET_STATUSES, TICKET_PRIORITIES } from "@shared/schema";
@@ -244,11 +245,13 @@ function KanbanView({
 }) {
   if (tickets.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground" data-testid="empty-tickets">
-        <TicketIcon className="w-10 h-10 mx-auto mb-3 opacity-40" />
-        <p className="text-sm font-medium">No tickets yet</p>
-        <p className="text-xs mt-1">Create your first ticket to get started.</p>
-      </div>
+      <EmptyState
+        icon={TicketIcon}
+        title="No tickets yet"
+        description="Track maintenance requests, vendor tasks, and community issues."
+        actionLabel="Create Ticket"
+        showAction={false}
+      />
     );
   }
 
@@ -444,11 +447,13 @@ function ListView({
 
   if (tickets.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground" data-testid="empty-tickets-list">
-        <TicketIcon className="w-10 h-10 mx-auto mb-3 opacity-40" />
-        <p className="text-sm font-medium">No tickets yet</p>
-        <p className="text-xs mt-1">Create your first ticket to get started.</p>
-      </div>
+      <EmptyState
+        icon={TicketIcon}
+        title="No tickets yet"
+        description="Track maintenance requests, vendor tasks, and community issues."
+        actionLabel="Create Ticket"
+        showAction={false}
+      />
     );
   }
 

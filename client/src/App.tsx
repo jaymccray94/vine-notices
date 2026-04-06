@@ -8,6 +8,8 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { GlobalSearch, useGlobalSearchShortcut } from "@/components/global-search";
+import { NotificationPrefsDialog } from "@/components/notification-prefs";
+import { BrandingProvider, useBranding } from "@/lib/branding";
 import { initTheme, getTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Association } from "@shared/schema";
 import {
@@ -29,7 +31,7 @@ import {
   Building2, FileText, Users, LogOut, Leaf, Video,
   TicketCheck, ClipboardList, Mail, Calculator, Shield,
   Sparkles, LayoutDashboard, Settings, FolderOpen, Store,
-  Globe, Search, Sun, Moon, Monitor, ChevronRight,
+  Globe, Search, Sun, Moon, Monitor, ChevronRight, Bell, Palette,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
@@ -55,6 +57,7 @@ import EmbedMeetingsPage from "@/pages/embed-meetings";
 import AIMeetingNoticesPage from "@/pages/ai-meeting-notices";
 import AIMeetingMinutesPage from "@/pages/ai-meeting-minutes";
 import SettingsHub from "@/pages/settings-hub";
+import BrandingSettings from "@/pages/branding-settings";
 import NotFound from "@/pages/not-found";
 
 // Initialize theme on load
@@ -103,6 +106,7 @@ function getPageTitle(location: string, currentAssoc?: Association | null) {
   if (location.startsWith("/preview/")) return "Embed Preview";
   if (location === "/users") return "Users";
   if (location === "/settings") return "Settings";
+  if (location === "/branding") return "Branding";
   return "";
 }
 
@@ -116,6 +120,7 @@ function getPageIcon(location: string) {
   if (location.startsWith("/preview/")) return Building2;
   if (location === "/users") return Users;
   if (location === "/settings") return Settings;
+  if (location === "/branding") return Palette;
   return LayoutDashboard;
 }
 
@@ -124,10 +129,26 @@ function PortalLayout() {
   const [location, setLocation] = useLocation();
   const [selectedAssocId, setSelectedAssocId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [notifPrefsOpen, setNotifPrefsOpen] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<Theme>(getTheme());
 
   // Global search shortcut (Cmd+K)
   useGlobalSearchShortcut(useCallback(() => setSearchOpen(true), []));
+
+  // Keyboard shortcuts: / to focus search
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Don't trigger when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["/api/associations"],
@@ -154,7 +175,7 @@ function PortalLayout() {
   const ThemeIcon = currentTheme === "dark" ? Moon : currentTheme === "light" ? Sun : Monitor;
 
   // Pages that don't require an association selection
-  const isGlobalPage = location === "/global/tickets" || location === "/associations" || location === "/users" || location === "/cinc-settings" || location === "/settings" || location.startsWith("/preview/") || location.startsWith("/ai/");
+  const isGlobalPage = location === "/global/tickets" || location === "/associations" || location === "/users" || location === "/cinc-settings" || location === "/settings" || location === "/branding" || location.startsWith("/preview/") || location.startsWith("/ai/");
 
   function handleNavigate(path: string) {
     if (path.startsWith("/hub/")) {
@@ -322,6 +343,14 @@ function PortalLayout() {
 
           <SidebarFooter className="p-3 space-y-1">
             <button
+              onClick={() => setNotifPrefsOpen(true)}
+              className="flex items-center gap-2 text-[13px] text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
+              data-testid="button-notifications"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Notifications</span>
+            </button>
+            <button
               onClick={cycleTheme}
               className="flex items-center gap-2 text-[13px] text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
               data-testid="button-theme-toggle"
@@ -333,7 +362,7 @@ function PortalLayout() {
             {isSuperAdmin && (
               <SidebarMenuButton
                 asChild
-                isActive={location === "/settings"}
+                isActive={location === "/settings" || location === "/branding"}
                 className="text-sidebar-foreground/60 hover:text-sidebar-foreground"
               >
                 <Link href="/settings" data-testid="sidebar-settings">
@@ -468,6 +497,7 @@ function PortalLayout() {
                 {(params) => <EmbedPreviewPage slug={params.slug} />}
               </Route>
               {isSuperAdmin && <Route path="/settings" component={SettingsHub} />}
+              {isSuperAdmin && <Route path="/branding" component={BrandingSettings} />}
               {isSuperAdmin && <Route path="/associations" component={AdminAssociationsPage} />}
               {isSuperAdmin && <Route path="/users" component={AdminUsersPage} />}
               <Route component={NotFound} />
@@ -484,6 +514,7 @@ function PortalLayout() {
         onNavigate={(path) => setLocation(path)}
         associationId={selectedAssocId}
       />
+      <NotificationPrefsDialog isOpen={notifPrefsOpen} onClose={() => setNotifPrefsOpen(false)} />
       <OnboardingTour />
     </SidebarProvider>
   );
@@ -514,10 +545,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Toaster />
-          <Router hook={useHashLocation}>
-            <AppRouter />
-          </Router>
+          <BrandingProvider>
+            <Toaster />
+            <Router hook={useHashLocation}>
+              <AppRouter />
+            </Router>
+          </BrandingProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

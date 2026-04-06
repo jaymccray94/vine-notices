@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/empty-state";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -179,12 +180,16 @@ export default function AdminInsurancePage({ associationId }: { associationId: s
       {/* Empty state */}
       {policies.length === 0 ? (
         <div
-          className="text-center py-16 text-muted-foreground"
           data-testid="empty-policies"
         >
-          <ShieldCheck className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm font-medium">No insurance policies yet</p>
-          <p className="text-xs mt-1">Add your first policy to track coverage.</p>
+          <EmptyState
+            icon={ShieldCheck}
+            title="No insurance policies yet"
+            description="Track association insurance policies, coverage types, and renewal dates."
+            actionLabel="Add Policy"
+            onAction={() => setCreating(true)}
+            showAction={canManage}
+          />
         </div>
       ) : (
         <div className="flex flex-col gap-3">

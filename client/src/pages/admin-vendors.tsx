@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/empty-state";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -298,9 +299,15 @@ export default function AdminVendorsPage({ associationId }: { associationId: str
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={canManage ? 7 : 6} className="text-center py-8 text-muted-foreground">
-                    <Store className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No vendors found</p>
+                  <TableCell colSpan={canManage ? 7 : 6} className="py-4">
+                    <EmptyState
+                      icon={Store}
+                      title={vendors.length === 0 ? "No vendors yet" : "No vendors match your search"}
+                      description={vendors.length === 0 ? "Manage service providers and track vendor insurance." : "Try adjusting your search or filter."}
+                      actionLabel="Add Vendor"
+                      onAction={() => setDialogOpen(true)}
+                      showAction={vendors.length === 0 && canManage}
+                    />
                   </TableCell>
                 </TableRow>
               ) : (

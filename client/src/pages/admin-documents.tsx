@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/empty-state";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -208,15 +209,14 @@ export default function AdminDocumentsPage({ associationId }: { associationId: s
 
       {/* Document List grouped by category */}
       {filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground" data-testid="empty-documents">
-          <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm font-medium">No documents found</p>
-          <p className="text-xs mt-1">
-            {documents.length === 0
-              ? "Upload your first document to get started."
-              : "Try adjusting your filters."}
-          </p>
-        </div>
+        <EmptyState
+          icon={FolderOpen}
+          title={documents.length === 0 ? "No documents yet" : "No documents match your filters"}
+          description={documents.length === 0 ? "Organize association documents by Florida HOA compliance categories." : "Try adjusting your search or filter criteria."}
+          actionLabel="Add Document"
+          onAction={() => setCreating(true)}
+          showAction={documents.length === 0 && canManage}
+        />
       ) : (
         <div className="space-y-5">
           {[...grouped.entries()].map(([catId, docs]) => {

@@ -10,6 +10,7 @@ import {
   Calculator, Shield, Sparkles, ArrowRight, Building2,
   FolderOpen, Store,
 } from "lucide-react";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 interface PortalApp {
   id: string;
@@ -169,6 +170,103 @@ export default function PortalDashboard({
           ))
         )}
       </div>
+
+      {/* Charts row */}
+      {stats && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {/* Ticket status pie chart */}
+          {stats.tickets.total > 0 && (
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onNavigate("/tickets")}>
+              <CardContent className="p-4">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Ticket Status</h3>
+                <div className="flex items-center gap-4">
+                  <div className="w-24 h-24">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: "Open", value: stats.tickets.open, color: "#3B82F6" },
+                            { name: "In Progress", value: stats.tickets.inProgress, color: "#F59E0B" },
+                            { name: "Done", value: Math.max(0, stats.tickets.total - stats.tickets.open - stats.tickets.inProgress), color: "#22C55E" },
+                          ].filter((d) => d.value > 0)}
+                          dataKey="value"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={22}
+                          outerRadius={40}
+                          strokeWidth={2}
+                        >
+                          {[
+                            { color: "#3B82F6" },
+                            { color: "#F59E0B" },
+                            { color: "#22C55E" },
+                          ].map((entry, index) => (
+                            <Cell key={index} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      <span>Open: {stats.tickets.open}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <span>In Progress: {stats.tickets.inProgress}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                      <span>Done: {Math.max(0, stats.tickets.total - stats.tickets.open - stats.tickets.inProgress)}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Activity overview bar chart */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Content Overview</h3>
+              <div className="h-24">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={[
+                      { name: "Notices", count: stats.notices, fill: "#317C3C" },
+                      { name: "Meetings", count: stats.meetings, fill: "#2B6CB0" },
+                      { name: "Docs", count: stats.documents.total, fill: "#6366F1" },
+                      { name: "Vendors", count: stats.vendors.total, fill: "#EC4899" },
+                      { name: "Invoices", count: stats.invoices.total, fill: "#319795" },
+                    ]}
+                    layout="vertical"
+                    margin={{ left: 0, right: 8, top: 0, bottom: 0 }}
+                  >
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="name" width={55} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      cursor={{ fill: "transparent" }}
+                      contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
+                    />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={12}>
+                      {[
+                        { fill: "#317C3C" },
+                        { fill: "#2B6CB0" },
+                        { fill: "#6366F1" },
+                        { fill: "#EC4899" },
+                        { fill: "#319795" },
+                      ].map((entry, index) => (
+                        <Cell key={index} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* All apps - all active */}
       <div className="mb-6">

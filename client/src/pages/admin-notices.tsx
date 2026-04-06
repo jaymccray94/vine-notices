@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, apiUpload } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { EmptyState } from "@/components/empty-state";
 import type { Notice, Association } from "@shared/schema";
 import { NOTICE_TYPES } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -216,15 +217,18 @@ export default function AdminNoticesPage({ associationId }: { associationId: str
           </Button>
         </div>
       ) : notices.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground" data-testid="empty-notices">
-          <FileText className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm font-medium">No notices yet</p>
-          <p className="text-xs mt-1">Create your first notice to get started.</p>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="No notices yet"
+          description="Post your first community notice — board meetings, assessments, elections, and more."
+          actionLabel="New Notice"
+          onAction={() => setCreating(true)}
+          showAction={canManage}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {filtered.map((notice) => (
-            <Card key={notice.id} className="hover:shadow-sm transition-shadow" data-testid={`card-notice-${notice.id}`}>
+            <Card key={notice.id} className="hover:shadow-sm transition-shadow border-l-4 border-l-primary" data-testid={`card-notice-${notice.id}`}>
               <CardContent className="p-4">
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">

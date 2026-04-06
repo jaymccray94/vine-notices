@@ -64,6 +64,7 @@ export interface Vendor {
   cincVendorId: string | null;
   createdBy: string;
   createdAt: string;
+  organizationId: number;
 }
 
 export interface IStorage {
@@ -209,7 +210,9 @@ export class MemStorage implements IStorage {
       email: "admin@vinemgt.com",
       name: "Vine Admin",
       role: "super_admin",
+      active: true,
       createdAt: now(),
+      organizationId: 1,
     });
 
     // Seed Jay
@@ -219,7 +222,9 @@ export class MemStorage implements IStorage {
       email: "jay@vinemgt.com",
       name: "Jay",
       role: "super_admin",
+      active: true,
       createdAt: now(),
+      organizationId: 1,
     });
 
     // Seed RSPOA
@@ -232,6 +237,7 @@ export class MemStorage implements IStorage {
       accentColor: "#8BC53F",
       darkColor: "#1B3E1E",
       createdAt: now(),
+      organizationId: 1,
     });
 
     // Seed some notices
@@ -250,6 +256,7 @@ export class MemStorage implements IStorage {
         ...n,
         postedDate: now(),
         createdBy: adminId,
+        organizationId: 1,
       });
     }
 
@@ -267,6 +274,7 @@ export class MemStorage implements IStorage {
         ...m,
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
       });
     }
 
@@ -286,6 +294,7 @@ export class MemStorage implements IStorage {
         status: t.status,
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
       });
     }
 
@@ -315,6 +324,7 @@ export class MemStorage implements IStorage {
         expirationDate: p.expirationDate,
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
       });
     }
 
@@ -340,6 +350,7 @@ export class MemStorage implements IStorage {
         requestedDate: now(),
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
       });
     }
 
@@ -359,6 +370,7 @@ export class MemStorage implements IStorage {
       ],
       createdBy: adminId,
       createdAt: now(),
+      organizationId: 1,
     });
 
     // ── Seed Accounting Items ──
@@ -390,6 +402,7 @@ export class MemStorage implements IStorage {
         unit: ai.unit,
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
       });
     }
 
@@ -410,6 +423,7 @@ export class MemStorage implements IStorage {
       ],
       createdBy: adminId,
       createdAt: now(),
+      organizationId: 1,
     });
 
     const inv2Id = uid();
@@ -428,6 +442,7 @@ export class MemStorage implements IStorage {
       ],
       createdBy: adminId,
       createdAt: now(),
+      organizationId: 1,
     });
 
     // ── Seed Vendors (RSPOA) ──
@@ -452,6 +467,7 @@ export class MemStorage implements IStorage {
         cincVendorId: null,
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
       });
     }
 
@@ -491,6 +507,7 @@ export class MemStorage implements IStorage {
         tags: doc.tags,
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
         updatedAt: now(),
       });
     }
@@ -507,6 +524,7 @@ export class MemStorage implements IStorage {
       accentColor: "#3B82F6",
       darkColor: "#1E3A5F",
       createdAt: now(),
+      organizationId: 1,
     });
 
     // Seed tickets for Cypress Pointe
@@ -527,6 +545,7 @@ export class MemStorage implements IStorage {
         status: t.status,
         createdBy: adminId,
         createdAt: now(),
+        organizationId: 1,
       });
     }
 
@@ -541,6 +560,7 @@ export class MemStorage implements IStorage {
       description: "Join us for our annual spring cleanup.",
       postedDate: now(),
       createdBy: adminId,
+      organizationId: 1,
     });
 
     // Seed a vendor for Cypress Pointe
@@ -559,6 +579,7 @@ export class MemStorage implements IStorage {
       cincVendorId: null,
       createdBy: adminId,
       createdAt: now(),
+      organizationId: 1,
     });
   }
 
@@ -605,7 +626,9 @@ export class MemStorage implements IStorage {
       email: input.email,
       name: input.name,
       role: input.role,
+      active: true,
       createdAt: now(),
+      organizationId: 1,
     };
     this.users.set(id, user);
     return { ...user };
@@ -661,7 +684,7 @@ export class MemStorage implements IStorage {
   }
   async createAssociation(input: InsertAssociation): Promise<Association> {
     const id = uid();
-    const assoc: Association = { id, ...input, createdAt: now() };
+    const assoc: Association = { id, ...input, createdAt: now(), organizationId: input.organizationId || 1 };
     this.associations.set(id, assoc);
     return assoc;
   }
@@ -699,6 +722,7 @@ export class MemStorage implements IStorage {
       pdfFilename: undefined,
       postedDate: now(),
       createdBy,
+      organizationId: 1,
     };
     this.notices.set(id, notice);
     return notice;
@@ -741,6 +765,7 @@ export class MemStorage implements IStorage {
       minutesUrl: input.minutesUrl || "",
       createdBy,
       createdAt: now(),
+      organizationId: 1,
     };
     this.meetings.set(id, meeting);
     return meeting;
@@ -776,6 +801,7 @@ export class MemStorage implements IStorage {
       ...input,
       createdBy,
       createdAt: now(),
+      organizationId: 1,
     };
     this.tickets.set(id, ticket);
     return ticket;
@@ -807,6 +833,7 @@ export class MemStorage implements IStorage {
       ...input,
       createdBy,
       createdAt: now(),
+      organizationId: 1,
     };
     this.insurancePolicies.set(id, policy);
     return policy;
@@ -839,6 +866,7 @@ export class MemStorage implements IStorage {
       requestedDate: now(),
       createdBy,
       createdAt: now(),
+      organizationId: 1,
     };
     this.mailingRequests.set(id, mailing);
     return mailing;
@@ -876,6 +904,7 @@ export class MemStorage implements IStorage {
       })),
       createdBy,
       createdAt: now(),
+      organizationId: 1,
     };
     this.onboardingChecklists.set(id, checklist);
     return checklist;
@@ -928,6 +957,7 @@ export class MemStorage implements IStorage {
       amountPaid: input.amountPaid ?? 0,
       createdBy,
       createdAt: now(),
+      organizationId: 1,
     };
     this.accountingItems.set(id, item);
     return item;
@@ -972,6 +1002,7 @@ export class MemStorage implements IStorage {
       notes: input.notes,
       createdBy,
       createdAt: now(),
+      organizationId: 1,
     };
     this.invoices.set(id, invoice);
     return invoice;
@@ -1104,6 +1135,7 @@ export interface AssociationDocument {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  organizationId: number;
 }
 
 // Florida HOA/POA document categories per F.S. 720.303 & 718.111

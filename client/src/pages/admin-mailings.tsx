@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/empty-state";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -211,9 +212,14 @@ export default function AdminMailingsPage({ associationId }: { associationId: st
           className="text-center py-16 text-muted-foreground"
           data-testid="empty-mailings"
         >
-          <Mail className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm font-medium">No mailing requests yet</p>
-          <p className="text-xs mt-1">Create your first mailing request to get started.</p>
+          <EmptyState
+            icon={Mail}
+            title="No mailing requests yet"
+            description="Request and track community mailings — assessments, violations, and official notices."
+            actionLabel="New Mailing"
+            onAction={() => setCreating(true)}
+            showAction={canManage}
+          />
         </div>
       ) : filtered.length === 0 ? (
         <div

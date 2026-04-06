@@ -6,36 +6,9 @@ import fs from "fs";
 import crypto from "crypto";
 import { storage, FLORIDA_DOCUMENT_CATEGORIES } from "./storage";
 import { magicLinkRequestSchema, magicLinkVerifySchema, insertUserSchema, insertAssociationSchema, insertNoticeSchema, insertMeetingSchema, insertTicketSchema, insertInsurancePolicySchema, insertMailingRequestSchema, insertOnboardingChecklistSchema, insertAccountingItemSchema, insertInvoiceSchema } from "@shared/schema";
-
-// ── Session tokens ──
-const sessions = new Map<string, { userId: string; expiresAt: number }>();
-
-function createToken(userId: string): string {
-  const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { userId, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
-  return token;
-}
-
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (!token) return res.status(401).json({ error: "Not authenticated" });
-  const session = sessions.get(token);
-  if (!session || session.expiresAt < Date.now()) {
-    sessions.delete(token || "");
-    return res.status(401).json({ error: "Session expired" });
-  }
-  const user = await storage.getUserById(session.userId);
-  if (!user) return res.status(401).json({ error: "User not found" });
-  (req as any).user = user;
-  next();
-}
-
-function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
-  if ((req as any).user.role !== "super_admin") {
-    return res.status(403).json({ error: "Super admin access required" });
-  }
-  next();
-}
+import { requireAuth, requireSuperAdmin, createSession, deleteSession, setAuthCookie, clearAuthCookie } from "./middleware/auth";
+import { rateLimit } from "./middleware/rate-limit";
+import { logger } from "./lib/logger";
 
 // ── File upload ──
 const uploadDir = path.resolve(process.cwd(), "uploads");
@@ -67,11 +40,6 @@ const upload = multer({
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
-  // Health check endpoint for Railway
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok" });
-  });
-
   const meetingNoticesStore: any[] = [];
   const meetingMinutesStore: any[] = [];
 
@@ -80,7 +48,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   // Step 1: Request a magic code
-  app.post("/api/auth/magic-link", async (req, res) => {
+  app.post("/api/auth/magic-link", rateLimit(5, 60_000), async (req, res) => {
     const parsed = magicLinkRequestSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid email" });
 
@@ -92,25 +60,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const code = await storage.createMagicCode(parsed.data.email);
 
-    // ──────────────────────────────────────────
-    // 🔌 EMAIL INTEGRATION POINT
-    // In production, send `code` to `parsed.data.email` via your email provider.
-    // Examples:
-    //   - Gmail API: Use googleapis to send from your domain
-    //   - Resend:    await resend.emails.send({ to: email, subject: "Your login code", html: `<p>Your code: <b>${code}</b></p>` })
-    //   - SendGrid:  await sgMail.send({ to: email, subject: "Your login code", text: `Your code: ${code}` })
-    //
-    // For this demo, the code is logged to the server console.
-    // ──────────────────────────────────────────
+    // In production, send `code` to `parsed.data.email` via email provider (Resend, SendGrid, etc.)
+    logger.info({ email: parsed.data.email }, `Magic link code generated`);
     console.log(`\n🔑 Magic link code for ${parsed.data.email}: ${code}\n`);
 
-    // In demo mode, also return the code so the UI can show it
     const isDemoMode = !process.env.EMAIL_PROVIDER;
     res.json({ sent: true, ...(isDemoMode ? { demoCode: code } : {}) });
   });
 
   // Step 2: Verify the code and log in
-  app.post("/api/auth/verify-code", async (req, res) => {
+  app.post("/api/auth/verify-code", rateLimit(10, 60_000), async (req, res) => {
     const parsed = magicLinkVerifySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
 
@@ -120,20 +79,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const valid = await storage.verifyMagicCode(parsed.data.email, parsed.data.code);
     if (!valid) return res.status(401).json({ error: "Invalid or expired code" });
 
-    const token = createToken(user.id);
+    const token = createSession({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      organizationId: (user as any).organizationId || 1,
+    });
+    setAuthCookie(res, token);
     const associations = await storage.getUserAssociations(user.id);
+    logger.info({ userId: user.id, email: user.email }, "User logged in");
     res.json({ token, user: { ...user, associations } });
   });
 
   app.get("/api/auth/me", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    const associations = await storage.getUserAssociations(user.id);
-    res.json({ ...user, associations });
+    const user = req.user!;
+    const fullUser = await storage.getUserById(user.userId);
+    if (!fullUser) return res.status(401).json({ error: "User not found" });
+    const associations = await storage.getUserAssociations(user.userId);
+    res.json({ ...fullUser, associations });
   });
 
   app.post("/api/auth/logout", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (token) sessions.delete(token);
+    const token = req.cookies?.vine_session || req.headers.authorization?.replace("Bearer ", "");
+    if (token) deleteSession(token);
+    clearAuthCookie(res);
     res.json({ ok: true });
   });
 
@@ -141,11 +111,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ── Associations ──
   // ══════════════════════════════════════════════
 
-  app.get("/api/associations", requireAuth, async (_req, res) => {
-    const user = (_req as any).user;
+  app.get("/api/associations", requireAuth, async (req, res) => {
+    const user = req.user!;
     let associations = await storage.listAssociations();
     if (user.role !== "super_admin") {
-      const userAssocs = await storage.getUserAssociations(user.id);
+      const userAssocs = await storage.getUserAssociations(user.userId);
       const ids = new Set(userAssocs.map((ua: any) => ua.associationId));
       associations = associations.filter((a) => ids.has(a.id));
     }
@@ -214,29 +184,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/associations/:assocId/notices", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.assocId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.assocId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listNotices(req.params.assocId));
   });
 
   app.post("/api/associations/:assocId/notices", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.assocId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.assocId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertNoticeSchema.safeParse({ ...req.body, associationId: req.params.assocId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const notice = await storage.createNotice(parsed.data, user.id);
+    const notice = await storage.createNotice(parsed.data, user.userId);
     res.status(201).json(notice);
   });
 
   app.patch("/api/notices/:id", requireAuth, async (req, res) => {
     const notice = await storage.getNotice(req.params.id);
     if (!notice) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, notice.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, notice.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateNotice(req.params.id, req.body);
@@ -246,8 +216,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/notices/:id", requireAuth, async (req, res) => {
     const notice = await storage.getNotice(req.params.id);
     if (!notice) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, notice.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, notice.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (notice.pdfFilename) {
@@ -262,8 +232,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/notices/:id/pdf", requireAuth, upload.single("pdf"), async (req, res) => {
     const notice = await storage.getNotice(req.params.id);
     if (!notice) return res.status(404).json({ error: "Notice not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, notice.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, notice.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
@@ -278,8 +248,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/notices/:id/pdf", requireAuth, async (req, res) => {
     const notice = await storage.getNotice(req.params.id);
     if (!notice) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, notice.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, notice.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (notice.pdfFilename) {
@@ -303,29 +273,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/associations/:assocId/meetings", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.assocId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.assocId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listMeetings(req.params.assocId));
   });
 
   app.post("/api/associations/:assocId/meetings", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.assocId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.assocId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertMeetingSchema.safeParse({ ...req.body, associationId: req.params.assocId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const meeting = await storage.createMeeting(parsed.data, user.id);
+    const meeting = await storage.createMeeting(parsed.data, user.userId);
     res.status(201).json(meeting);
   });
 
   app.patch("/api/meetings/:id", requireAuth, async (req, res) => {
     const meeting = await storage.getMeeting(req.params.id);
     if (!meeting) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, meeting.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, meeting.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateMeeting(req.params.id, req.body);
@@ -335,8 +305,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/meetings/:id", requireAuth, async (req, res) => {
     const meeting = await storage.getMeeting(req.params.id);
     if (!meeting) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, meeting.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, meeting.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteMeeting(req.params.id);
@@ -348,29 +318,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/tickets/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listTickets(req.params.associationId));
   });
 
   app.post("/api/tickets/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertTicketSchema.safeParse({ ...req.body, associationId: req.params.associationId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const ticket = await storage.createTicket(parsed.data, user.id);
+    const ticket = await storage.createTicket(parsed.data, user.userId);
     res.status(201).json(ticket);
   });
 
   app.patch("/api/tickets/item/:id", requireAuth, async (req, res) => {
     const ticket = await storage.getTicket(req.params.id);
     if (!ticket) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, ticket.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, ticket.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateTicket(req.params.id, req.body);
@@ -380,8 +350,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/tickets/item/:id", requireAuth, async (req, res) => {
     const ticket = await storage.getTicket(req.params.id);
     if (!ticket) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, ticket.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, ticket.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteTicket(req.params.id);
@@ -393,29 +363,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/insurance/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listInsurancePolicies(req.params.associationId));
   });
 
   app.post("/api/insurance/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertInsurancePolicySchema.safeParse({ ...req.body, associationId: req.params.associationId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const policy = await storage.createInsurancePolicy(parsed.data, user.id);
+    const policy = await storage.createInsurancePolicy(parsed.data, user.userId);
     res.status(201).json(policy);
   });
 
   app.patch("/api/insurance/item/:id", requireAuth, async (req, res) => {
     const policy = await storage.getInsurancePolicy(req.params.id);
     if (!policy) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, policy.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, policy.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateInsurancePolicy(req.params.id, req.body);
@@ -425,8 +395,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/insurance/item/:id", requireAuth, async (req, res) => {
     const policy = await storage.getInsurancePolicy(req.params.id);
     if (!policy) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, policy.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, policy.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteInsurancePolicy(req.params.id);
@@ -438,29 +408,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/mailings/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listMailingRequests(req.params.associationId));
   });
 
   app.post("/api/mailings/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertMailingRequestSchema.safeParse({ ...req.body, associationId: req.params.associationId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const mailing = await storage.createMailingRequest(parsed.data, user.id);
+    const mailing = await storage.createMailingRequest(parsed.data, user.userId);
     res.status(201).json(mailing);
   });
 
   app.patch("/api/mailings/item/:id", requireAuth, async (req, res) => {
     const mailing = await storage.getMailingRequest(req.params.id);
     if (!mailing) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, mailing.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, mailing.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateMailingRequest(req.params.id, req.body);
@@ -470,8 +440,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/mailings/item/:id", requireAuth, async (req, res) => {
     const mailing = await storage.getMailingRequest(req.params.id);
     if (!mailing) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, mailing.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, mailing.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteMailingRequest(req.params.id);
@@ -483,29 +453,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/onboarding/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listOnboardingChecklists(req.params.associationId));
   });
 
   app.post("/api/onboarding/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertOnboardingChecklistSchema.safeParse({ ...req.body, associationId: req.params.associationId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const checklist = await storage.createOnboardingChecklist(parsed.data, user.id);
+    const checklist = await storage.createOnboardingChecklist(parsed.data, user.userId);
     res.status(201).json(checklist);
   });
 
   app.patch("/api/onboarding/item/:id", requireAuth, async (req, res) => {
     const checklist = await storage.getOnboardingChecklist(req.params.id);
     if (!checklist) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, checklist.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, checklist.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateOnboardingChecklist(req.params.id, req.body);
@@ -515,8 +485,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/onboarding/item/:id", requireAuth, async (req, res) => {
     const checklist = await storage.getOnboardingChecklist(req.params.id);
     if (!checklist) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, checklist.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, checklist.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteOnboardingChecklist(req.params.id);
@@ -526,8 +496,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/onboarding/item/:checklistId/toggle/:itemId", requireAuth, async (req, res) => {
     const checklist = await storage.getOnboardingChecklist(req.params.checklistId);
     if (!checklist) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, checklist.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, checklist.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.toggleOnboardingItem(req.params.checklistId, req.params.itemId);
@@ -540,29 +510,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/accounting/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listAccountingItems(req.params.associationId));
   });
 
   app.post("/api/accounting/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertAccountingItemSchema.safeParse({ ...req.body, associationId: req.params.associationId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const item = await storage.createAccountingItem(parsed.data, user.id);
+    const item = await storage.createAccountingItem(parsed.data, user.userId);
     res.status(201).json(item);
   });
 
   app.patch("/api/accounting/item/:id", requireAuth, async (req, res) => {
     const item = await storage.getAccountingItem(req.params.id);
     if (!item) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, item.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, item.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateAccountingItem(req.params.id, req.body);
@@ -572,8 +542,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/accounting/item/:id", requireAuth, async (req, res) => {
     const item = await storage.getAccountingItem(req.params.id);
     if (!item) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, item.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, item.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteAccountingItem(req.params.id);
@@ -585,29 +555,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/invoices/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listInvoices(req.params.associationId));
   });
 
   app.post("/api/invoices/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const parsed = insertInvoiceSchema.safeParse({ ...req.body, associationId: req.params.associationId });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const invoice = await storage.createInvoice(parsed.data, user.id);
+    const invoice = await storage.createInvoice(parsed.data, user.userId);
     res.status(201).json(invoice);
   });
 
   app.patch("/api/invoices/item/:id", requireAuth, async (req, res) => {
     const invoice = await storage.getInvoice(req.params.id);
     if (!invoice) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, invoice.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, invoice.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateInvoice(req.params.id, req.body);
@@ -617,8 +587,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/invoices/item/:id", requireAuth, async (req, res) => {
     const invoice = await storage.getInvoice(req.params.id);
     if (!invoice) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, invoice.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, invoice.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteInvoice(req.params.id);
@@ -630,14 +600,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/stats/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user!;
     const { associationId } = req.params;
-    if (!await storage.canUserAccessAssociation(user.id, associationId)) {
+    if (!await storage.canUserAccessAssociation(user.userId, associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const notices = await storage.listNotices(associationId).length;
-    const meetings = await storage.listMeetings(associationId).length;
+    const noticesList = await storage.listNotices(associationId);
+    const notices = noticesList.length;
+    const meetingsList = await storage.listMeetings(associationId);
+    const meetings = meetingsList.length;
 
     const tickets = await storage.listTickets(associationId);
     const ticketOpen = tickets.filter((t) => t.status === "open").length;
@@ -698,11 +670,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/global/tickets", requireAuth, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user!;
     let tickets = await storage.listAllTickets();
     // Non-super-admins only see tickets for their assigned associations
     if (user.role !== "super_admin") {
-      const userAssocs = await storage.getUserAssociations(user.id);
+      const userAssocs = await storage.getUserAssociations(user.userId);
       const ids = new Set(userAssocs.map((ua: any) => ua.associationId));
       tickets = tickets.filter((t) => ids.has(t.associationId));
     }
@@ -719,18 +691,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ══════════════════════════════════════════════
 
   app.get("/api/vendors/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listVendors(req.params.associationId));
   });
 
   app.get("/api/global/vendors", requireAuth, async (req, res) => {
-    const user = (req as any).user;
+    const user = req.user!;
     let vendors = await storage.listAllVendors();
     if (user.role !== "super_admin") {
-      const userAssocs = await storage.getUserAssociations(user.id);
+      const userAssocs = await storage.getUserAssociations(user.userId);
       const ids = new Set(userAssocs.map((ua: any) => ua.associationId));
       vendors = vendors.filter((v) => ids.has(v.associationId));
     }
@@ -742,8 +714,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/vendors/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const vendor = await storage.createVendor({
@@ -757,16 +729,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       insuranceExpiry: req.body.insuranceExpiry || null,
       notes: req.body.notes || null,
       cincVendorId: req.body.cincVendorId || null,
-      createdBy: user.id,
-    }, user.id);
+      createdBy: user.userId,
+    }, user.userId);
     res.status(201).json(vendor);
   });
 
   app.patch("/api/vendors/item/:id", requireAuth, async (req, res) => {
     const vendor = await storage.getVendor(req.params.id);
     if (!vendor) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, vendor.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, vendor.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateVendor(req.params.id, req.body);
@@ -776,8 +748,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/vendors/item/:id", requireAuth, async (req, res) => {
     const vendor = await storage.getVendor(req.params.id);
     if (!vendor) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, vendor.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, vendor.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     await storage.deleteVendor(req.params.id);
@@ -793,16 +765,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/documents/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId)) {
       return res.status(403).json({ error: "Access denied" });
     }
     res.json(await storage.listDocuments(req.params.associationId));
   });
 
   app.post("/api/documents/:associationId", requireAuth, async (req, res) => {
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, req.params.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, req.params.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const doc = await storage.createDocument({
@@ -816,16 +788,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       retentionYears: req.body.retentionYears || null,
       isPublic: req.body.isPublic ?? false,
       tags: req.body.tags || [],
-      createdBy: user.id,
-    }, user.id);
+      createdBy: user.userId,
+    }, user.userId);
     res.status(201).json(doc);
   });
 
   app.patch("/api/documents/item/:id", requireAuth, async (req, res) => {
     const doc = await storage.getDocument(req.params.id);
     if (!doc) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, doc.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, doc.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     const updated = await storage.updateDocument(req.params.id, req.body);
@@ -835,8 +807,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/documents/item/:id", requireAuth, async (req, res) => {
     const doc = await storage.getDocument(req.params.id);
     if (!doc) return res.status(404).json({ error: "Not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, doc.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, doc.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (doc.filename) {
@@ -851,8 +823,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/documents/:id/file", requireAuth, upload.single("file"), async (req, res) => {
     const doc = await storage.getDocument(req.params.id);
     if (!doc) return res.status(404).json({ error: "Document not found" });
-    const user = (req as any).user;
-    if (!await storage.canUserAccessAssociation(user.id, doc.associationId, true)) {
+    const user = req.user!;
+    if (!await storage.canUserAccessAssociation(user.userId, doc.associationId, true)) {
       return res.status(403).json({ error: "Manage permission required" });
     }
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
@@ -912,6 +884,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     return resp.json();
   }
+
+  // ══════════════════════════════════════════════
+  // ── Branding Settings ──
+  // ══════════════════════════════════════════════
+
+  app.get("/api/branding", async (_req, res) => {
+    // Public endpoint - returns branding for the current org
+    try {
+      const db = await import("./db");
+      const schema = await import("../shared/db-schema");
+      const { eq } = await import("drizzle-orm");
+      const row = await db.db.query.brandingSettings.findFirst({
+        where: eq(schema.brandingSettings.organizationId, 1),
+      });
+      if (!row) {
+        return res.json({
+          companyName: "Vine Management",
+          primaryColor: "#317C3C",
+          sidebarColor: "#1B3E1E",
+          accentColor: "#8BC53F",
+        });
+      }
+      res.json(row);
+    } catch {
+      res.json({
+        companyName: "Vine Management",
+        primaryColor: "#317C3C",
+        sidebarColor: "#1B3E1E",
+        accentColor: "#8BC53F",
+      });
+    }
+  });
+
+  app.patch("/api/branding", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const db = await import("./db");
+      const schema = await import("../shared/db-schema");
+      const { eq } = await import("drizzle-orm");
+
+      const existing = await db.db.query.brandingSettings.findFirst({
+        where: eq(schema.brandingSettings.organizationId, 1),
+      });
+
+      const data = {
+        companyName: req.body.companyName,
+        primaryColor: req.body.primaryColor,
+        sidebarColor: req.body.sidebarColor,
+        accentColor: req.body.accentColor,
+        footerText: req.body.footerText,
+        logoUrl: req.body.logoUrl,
+        faviconUrl: req.body.faviconUrl,
+        organizationId: 1,
+        updatedAt: new Date(),
+      };
+
+      if (existing) {
+        await db.db.update(schema.brandingSettings).set(data).where(eq(schema.brandingSettings.id, existing.id));
+      } else {
+        await db.db.insert(schema.brandingSettings).values(data);
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════
+  // ── CINC API Integration ──
+  // ══════════════════════════════════════════════
 
   app.get("/api/cinc/settings", requireAuth, requireSuperAdmin, async (_req, res) => {
     const settings = await storage.getCincSettings();
@@ -1053,7 +1095,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/public/:slug/notices", async (req, res) => {
     const assoc = await storage.getAssociationBySlug(req.params.slug);
     if (!assoc) return res.status(404).json({ error: "Association not found" });
-    const notices = await storage.listNotices(assoc.id).map((n) => ({
+    const rawNotices = await storage.listNotices(assoc.id);
+    const notices = rawNotices.map((n: any) => ({
       id: n.id,
       date: n.date,
       title: n.title,
@@ -1069,7 +1112,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/public/:slug/meetings", async (req, res) => {
     const assoc = await storage.getAssociationBySlug(req.params.slug);
     if (!assoc) return res.status(404).json({ error: "Association not found" });
-    const meetings = await storage.listMeetings(assoc.id).map((m) => ({
+    const rawMeetings = await storage.listMeetings(assoc.id);
+    const meetings = rawMeetings.map((m: any) => ({
       id: m.id,
       date: m.date,
       title: m.title,
@@ -1086,9 +1130,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/public/:slug/documents", async (req, res) => {
     const assoc = await storage.getAssociationBySlug(req.params.slug);
     if (!assoc) return res.status(404).json({ error: "Association not found" });
-    const docs = await storage.listDocuments(assoc.id)
-      .filter((d) => d.isPublic && d.status === "current")
-      .map((d) => ({
+    const rawDocs = await storage.listDocuments(assoc.id);
+    const docs = rawDocs
+      .filter((d: any) => d.isPublic && d.status === "current")
+      .map((d: any) => ({
         id: d.id,
         title: d.title,
         category: d.category,

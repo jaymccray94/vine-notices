@@ -3,6 +3,12 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setStorage } from "./storage";
+import { logger } from "./lib/logger";
+import { sessionResolver } from "./middleware/auth";
+import helmet from "helmet";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import crypto from "crypto";
 
 const app = express();
 const httpServer = createServer(app);
@@ -13,81 +19,152 @@ declare module "http" {
   }
 }
 
+// ── Security headers ────────────────────────────────────────
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'", "wss:"],
+      frameSrc: ["'self'", "blob:"],
+      fontSrc: ["'self'"],
+    },
+  } : false, // Disable CSP in development for Vite HMR
+}));
+
+// ── CORS ────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",")
+  : ["http://localhost:5000", "http://localhost:3000"];
+
+app.use(cors({
+  origin: process.env.NODE_ENV === "production"
+    ? (origin, callback) => {
+        if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vinemgmt.app")) {
+          callback(null, true);
+        } else {
+          callback(new Error("Not allowed by CORS"));
+        }
+      }
+    : true,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
+// ── Cookie parser (for httpOnly auth cookies) ───────────────
+app.use(cookieParser());
+
+// ── Request trace ID ────────────────────────────────────────
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  req.id = req.headers["x-request-id"] as string || crypto.randomUUID();
+  req.orgId = req.orgId || 1;
+  next();
+});
+
+// ── Session resolver (populates req.user from cookie/header) ─
+app.use(sessionResolver);
+
+// ── CSRF protection via Origin check (for state-changing requests) ──
+if (process.env.NODE_ENV === "production") {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+      const origin = req.headers.origin;
+      const appUrl = process.env.APP_URL || "";
+      if (origin && appUrl && !origin.startsWith(appUrl) && !origin.endsWith(".vinemgmt.app")) {
+        if (!req.path.startsWith("/api/webhooks/")) {
+          return res.status(403).json({ code: "CSRF_ERROR", message: "Cross-origin request blocked" });
+        }
+      }
+    }
+    next();
+  });
+}
+
+// ── Body parsing with safe limits ───────────────────────────
 app.use(
   express.json({
+    limit: "10mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
-app.use(express.urlencoded({ extended: false }));
-
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
-
+// ── Request logging ─────────────────────────────────────────
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+    if (req.path.startsWith("/api")) {
+      logger.info({
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        duration,
+        traceId: req.id,
+        userId: (req as any).user?.userId,
+      }, `${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
     }
   });
-
   next();
 });
+
+// For backward compatibility
+export function log(message: string, source = "express") {
+  logger.info({ source }, message);
+}
 
 (async () => {
   // Use PostgreSQL when DATABASE_URL is provided, otherwise fall back to in-memory storage
   if (process.env.DATABASE_URL) {
     const { DatabaseStorage } = await import("./db-storage");
     setStorage(new DatabaseStorage());
-    console.log("Using PostgreSQL database storage");
+    logger.info("Using PostgreSQL database storage");
   } else {
-    console.log("Using in-memory storage (no DATABASE_URL)");
+    logger.info("Using in-memory storage (no DATABASE_URL)");
   }
 
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
+  // ── Enhanced health check ───────────────────────────────
+  app.get("/api/health", async (_req, res) => {
+    const checks: Record<string, string> = {};
+    try {
+      if (process.env.DATABASE_URL) {
+        const { pool } = await import("./db");
+        await pool.query("SELECT 1");
+        checks.database = "ok";
+      } else {
+        checks.database = "in-memory";
+      }
+    } catch {
+      checks.database = "error";
     }
 
-    return res.status(status).json({ message });
+    const allOk = checks.database !== "error";
+    res.status(allOk ? 200 : 503).json({
+      status: allOk ? "healthy" : "degraded",
+      checks,
+      uptime: Math.floor(process.uptime()),
+      version: process.env.npm_package_version || "1.0.0",
+    });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // ── Global error handler ──────────────────────────────────
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    logger.error({ err }, "Unhandled error");
+    if (res.headersSent) return next(err);
+    res.status(err.status || 500).json({
+      code: "INTERNAL_ERROR",
+      message: process.env.NODE_ENV === "production" ? "An unexpected error occurred" : err.message,
+    });
+  });
+
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -95,19 +172,30 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
-})();
+  httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+    logger.info({ port }, `Server listening on port ${port}`);
+  });
+
+  // ── Graceful shutdown ─────────────────────────────────────
+  const shutdown = async (signal: string) => {
+    logger.info({ signal }, "Shutdown signal received, closing gracefully...");
+
+    httpServer.close(() => {
+      logger.info("HTTP server closed");
+      process.exit(0);
+    });
+
+    // Force exit after 30 seconds
+    setTimeout(() => {
+      logger.error("Forced shutdown after timeout");
+      process.exit(1);
+    }, 30_000);
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+})().catch((err) => {
+  console.error("FATAL: Server failed to start:", err);
+  process.exit(1);
+});

@@ -3,6 +3,45 @@ import { z } from "zod";
 // ── Roles ──
 export const ROLES = ["super_admin", "association_admin", "staff"] as const;
 export type Role = (typeof ROLES)[number];
+export type UserRole = Role;
+
+// ── Role Hierarchy (for permission checks) ──
+export const ROLE_HIERARCHY: Record<string, number> = {
+  super_admin: 3,
+  association_admin: 2,
+  staff: 1,
+};
+
+// ── Organization ──
+export const organizationSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  slug: z.string(),
+  domain: z.string().optional(),
+  logoUrl: z.string().optional(),
+  plan: z.string().default("free"),
+  settings: z.string().optional(),
+  createdAt: z.string(),
+  customDomain: z.string().optional(),
+  domainVerified: z.boolean().default(false),
+  subdomain: z.string().optional(),
+  onboardingCompleted: z.boolean().default(false),
+  maxUsers: z.number().default(50),
+});
+export type Organization = z.infer<typeof organizationSchema>;
+export const insertOrganizationSchema = organizationSchema.omit({ id: true, createdAt: true });
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+
+// ── Membership ──
+export const membershipSchema = z.object({
+  id: z.number(),
+  userId: z.string(),
+  organizationId: z.number(),
+  role: z.string().default("staff"),
+  isActive: z.boolean().default(true),
+  createdAt: z.string(),
+});
+export type Membership = z.infer<typeof membershipSchema>;
 
 // ── Notice Types ──
 export const NOTICE_TYPES = [
@@ -30,6 +69,7 @@ export const associationSchema = z.object({
   accentColor: z.string().default("#8BC53F"),
   darkColor: z.string().default("#1B3E1E"),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type Association = z.infer<typeof associationSchema>;
 export const insertAssociationSchema = associationSchema.omit({ id: true, createdAt: true });
@@ -41,7 +81,9 @@ export const userSchema = z.object({
   email: z.string().email(),
   name: z.string(),
   role: z.enum(ROLES),
+  active: z.boolean().default(true),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type User = z.infer<typeof userSchema>;
 export const insertUserSchema = z.object({
@@ -71,6 +113,7 @@ export const noticeSchema = z.object({
   meetingUrl: z.string().optional(),
   postedDate: z.string(),
   createdBy: z.string(),
+  organizationId: z.number().default(1),
 });
 export type Notice = z.infer<typeof noticeSchema>;
 export const insertNoticeSchema = z.object({
@@ -120,6 +163,7 @@ export const meetingSchema = z.object({
   minutesUrl: z.string().optional(),
   createdBy: z.string(),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type Meeting = z.infer<typeof meetingSchema>;
 export const insertMeetingSchema = z.object({
@@ -162,6 +206,7 @@ export const ticketSchema = z.object({
   assignee: z.string().optional(),
   createdBy: z.string(),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type Ticket = z.infer<typeof ticketSchema>;
 export const insertTicketSchema = z.object({
@@ -189,6 +234,7 @@ export const insurancePolicySchema = z.object({
   notes: z.string().optional(),
   createdBy: z.string(),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type InsurancePolicy = z.infer<typeof insurancePolicySchema>;
 export const insertInsurancePolicySchema = z.object({
@@ -219,6 +265,7 @@ export const mailingRequestSchema = z.object({
   targetMailDate: z.string().optional(),
   createdBy: z.string(),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type MailingRequest = z.infer<typeof mailingRequestSchema>;
 export const insertMailingRequestSchema = z.object({
@@ -246,6 +293,7 @@ export const onboardingChecklistSchema = z.object({
   })),
   createdBy: z.string(),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type OnboardingChecklist = z.infer<typeof onboardingChecklistSchema>;
 export type OnboardingItem = OnboardingChecklist["items"][number];
@@ -276,6 +324,7 @@ export const accountingItemSchema = z.object({
   notes: z.string().optional(),
   createdBy: z.string(),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type AccountingItem = z.infer<typeof accountingItemSchema>;
 export const insertAccountingItemSchema = z.object({
@@ -316,6 +365,7 @@ export const invoiceSchema = z.object({
   notes: z.string().optional(),
   createdBy: z.string(),
   createdAt: z.string(),
+  organizationId: z.number().default(1),
 });
 export type Invoice = z.infer<typeof invoiceSchema>;
 export const insertInvoiceSchema = z.object({
@@ -333,6 +383,20 @@ export const insertInvoiceSchema = z.object({
   notes: z.string().optional(),
 });
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+
+// ── Branding Settings ──
+export const brandingSettingsSchema = z.object({
+  id: z.number(),
+  logoUrl: z.string().optional(),
+  faviconUrl: z.string().optional(),
+  companyName: z.string().default("Vine Management"),
+  footerText: z.string().optional(),
+  primaryColor: z.string().default("#317C3C"),
+  sidebarColor: z.string().default("#1B3E1E"),
+  accentColor: z.string().default("#8BC53F"),
+  organizationId: z.number().default(1),
+});
+export type BrandingSettings = z.infer<typeof brandingSettingsSchema>;
 
 // ── Safe user (public-facing) ──
 export type SafeUser = User & {

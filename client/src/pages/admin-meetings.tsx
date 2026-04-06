@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { EmptyState } from "@/components/empty-state";
 import type { Meeting } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,11 +63,14 @@ export default function AdminMeetingsPage({ associationId }: { associationId: st
       </div>
 
       {meetings.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground" data-testid="empty-meetings">
-          <Video className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm font-medium">No meetings recorded yet</p>
-          <p className="text-xs mt-1">Add your first meeting record to get started.</p>
-        </div>
+        <EmptyState
+          icon={Video}
+          title="No meetings recorded yet"
+          description="Track meeting recordings, agendas, and minutes all in one place."
+          actionLabel="Add Meeting"
+          onAction={() => setCreating(true)}
+          showAction={canManage}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {meetings.map((meeting) => (

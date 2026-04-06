@@ -42,12 +42,12 @@ export class DatabaseStorage implements IStorage {
     const row = await db.query.users.findFirst({
       where: eq(s.users.email, email.toLowerCase()),
     });
-    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], createdAt: row.createdAt } : undefined;
+    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], active: row.active ?? true, createdAt: row.createdAt, organizationId: row.organizationId ?? 1 } : undefined;
   }
 
   async getUserById(id: string): Promise<User | undefined> {
     const row = await db.query.users.findFirst({ where: eq(s.users.id, id) });
-    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], createdAt: row.createdAt } : undefined;
+    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], active: row.active ?? true, createdAt: row.createdAt, organizationId: row.organizationId ?? 1 } : undefined;
   }
 
   // ── Magic Codes ──
@@ -87,14 +87,14 @@ export class DatabaseStorage implements IStorage {
     const result: SafeUser[] = [];
     for (const u of rows) {
       const associations = await this.getUserAssociations(u.id);
-      result.push({ id: u.id, email: u.email, name: u.name, role: u.role as User["role"], createdAt: u.createdAt, associations });
+      result.push({ id: u.id, email: u.email, name: u.name, role: u.role as User["role"], active: (u as any).active ?? true, createdAt: u.createdAt, organizationId: (u as any).organizationId ?? 1, associations });
     }
     return result;
   }
 
   async createUser(input: InsertUser): Promise<SafeUser> {
     const id = uid();
-    const user: User = { id, email: input.email, name: input.name, role: input.role, createdAt: now() };
+    const user: User = { id, email: input.email, name: input.name, role: input.role, active: true, createdAt: now(), organizationId: 1 };
     await db.insert(s.users).values(user);
     return { ...user };
   }
@@ -199,7 +199,7 @@ export class DatabaseStorage implements IStorage {
     return rows.map((r) => ({
       id: r.id, associationId: r.associationId, date: r.date, title: r.title,
       type: r.type, description: r.description ?? undefined, pdfFilename: r.pdfFilename ?? undefined,
-      meetingUrl: r.meetingUrl ?? undefined, postedDate: r.postedDate, createdBy: r.createdBy,
+      meetingUrl: r.meetingUrl ?? undefined, postedDate: r.postedDate, createdBy: r.createdBy, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -209,7 +209,7 @@ export class DatabaseStorage implements IStorage {
     return {
       id: r.id, associationId: r.associationId, date: r.date, title: r.title,
       type: r.type, description: r.description ?? undefined, pdfFilename: r.pdfFilename ?? undefined,
-      meetingUrl: r.meetingUrl ?? undefined, postedDate: r.postedDate, createdBy: r.createdBy,
+      meetingUrl: r.meetingUrl ?? undefined, postedDate: r.postedDate, createdBy: r.createdBy, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
@@ -217,7 +217,7 @@ export class DatabaseStorage implements IStorage {
     const id = uid();
     const notice: Notice = {
       id, ...input, description: input.description || "", meetingUrl: input.meetingUrl || "",
-      pdfFilename: undefined, postedDate: now(), createdBy,
+      pdfFilename: undefined, postedDate: now(), createdBy, organizationId: 1,
     };
     await db.insert(s.notices).values({
       id, associationId: input.associationId, date: input.date, title: input.title,
@@ -253,7 +253,7 @@ export class DatabaseStorage implements IStorage {
       id: r.id, associationId: r.associationId, date: r.date, title: r.title,
       description: r.description ?? undefined, videoUrl: r.videoUrl ?? undefined,
       agendaUrl: r.agendaUrl ?? undefined, minutesUrl: r.minutesUrl ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -264,7 +264,7 @@ export class DatabaseStorage implements IStorage {
       id: r.id, associationId: r.associationId, date: r.date, title: r.title,
       description: r.description ?? undefined, videoUrl: r.videoUrl ?? undefined,
       agendaUrl: r.agendaUrl ?? undefined, minutesUrl: r.minutesUrl ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
@@ -272,7 +272,7 @@ export class DatabaseStorage implements IStorage {
     const id = uid();
     const meeting: Meeting = {
       id, ...input, description: input.description || "", videoUrl: input.videoUrl || "",
-      agendaUrl: input.agendaUrl || "", minutesUrl: input.minutesUrl || "", createdBy, createdAt: now(),
+      agendaUrl: input.agendaUrl || "", minutesUrl: input.minutesUrl || "", createdBy, createdAt: now(), organizationId: 1,
     };
     await db.insert(s.meetings).values({
       id, associationId: input.associationId, date: input.date, title: input.title,
@@ -304,7 +304,7 @@ export class DatabaseStorage implements IStorage {
     return rows.map((r) => ({
       id: r.id, associationId: r.associationId, title: r.title, description: r.description ?? undefined,
       status: r.status as Ticket["status"], priority: r.priority as Ticket["priority"],
-      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt,
+      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -313,7 +313,7 @@ export class DatabaseStorage implements IStorage {
     return rows.map((r) => ({
       id: r.id, associationId: r.associationId, title: r.title, description: r.description ?? undefined,
       status: r.status as Ticket["status"], priority: r.priority as Ticket["priority"],
-      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt,
+      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -323,13 +323,13 @@ export class DatabaseStorage implements IStorage {
     return {
       id: r.id, associationId: r.associationId, title: r.title, description: r.description ?? undefined,
       status: r.status as Ticket["status"], priority: r.priority as Ticket["priority"],
-      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt,
+      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
   async createTicket(input: InsertTicket, createdBy: string): Promise<Ticket> {
     const id = uid();
-    const ticket: Ticket = { id, ...input, createdBy, createdAt: now() };
+    const ticket: Ticket = { id, ...input, createdBy, createdAt: now(), organizationId: 1 };
     await db.insert(s.tickets).values({
       id, associationId: input.associationId, title: input.title,
       description: input.description, status: input.status || "open",
@@ -362,7 +362,7 @@ export class DatabaseStorage implements IStorage {
       policyNumber: r.policyNumber, coverageType: r.coverageType,
       premium: r.premium ?? undefined, effectiveDate: r.effectiveDate,
       expirationDate: r.expirationDate, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -374,13 +374,13 @@ export class DatabaseStorage implements IStorage {
       policyNumber: r.policyNumber, coverageType: r.coverageType,
       premium: r.premium ?? undefined, effectiveDate: r.effectiveDate,
       expirationDate: r.expirationDate, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
   async createInsurancePolicy(input: InsertInsurancePolicy, createdBy: string): Promise<InsurancePolicy> {
     const id = uid();
-    const policy: InsurancePolicy = { id, ...input, createdBy, createdAt: now() };
+    const policy: InsurancePolicy = { id, ...input, createdBy, createdAt: now(), organizationId: 1 };
     await db.insert(s.insurancePolicies).values({
       id, associationId: input.associationId, carrier: input.carrier,
       policyNumber: input.policyNumber, coverageType: input.coverageType,
@@ -414,7 +414,7 @@ export class DatabaseStorage implements IStorage {
       description: r.description ?? undefined, recipientCount: r.recipientCount ?? undefined,
       mailingType: r.mailingType, status: r.status as MailingRequest["status"],
       requestedDate: r.requestedDate, targetMailDate: r.targetMailDate ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -426,13 +426,13 @@ export class DatabaseStorage implements IStorage {
       description: r.description ?? undefined, recipientCount: r.recipientCount ?? undefined,
       mailingType: r.mailingType, status: r.status as MailingRequest["status"],
       requestedDate: r.requestedDate, targetMailDate: r.targetMailDate ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
   async createMailingRequest(input: InsertMailingRequest, createdBy: string): Promise<MailingRequest> {
     const id = uid();
-    const mailing: MailingRequest = { id, ...input, requestedDate: now(), createdBy, createdAt: now() };
+    const mailing: MailingRequest = { id, ...input, requestedDate: now(), createdBy, createdAt: now(), organizationId: 1 };
     await db.insert(s.mailingRequests).values({
       id, associationId: input.associationId, title: input.title,
       description: input.description, recipientCount: input.recipientCount,
@@ -463,7 +463,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(s.onboardingChecklists.createdAt));
     return rows.map((r) => ({
       id: r.id, associationId: r.associationId, title: r.title,
-      items: (r.items as any[]) || [], createdBy: r.createdBy, createdAt: r.createdAt,
+      items: (r.items as any[]) || [], createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -472,7 +472,7 @@ export class DatabaseStorage implements IStorage {
     if (!r) return undefined;
     return {
       id: r.id, associationId: r.associationId, title: r.title,
-      items: (r.items as any[]) || [], createdBy: r.createdBy, createdAt: r.createdAt,
+      items: (r.items as any[]) || [], createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
@@ -481,7 +481,7 @@ export class DatabaseStorage implements IStorage {
     const items = (input.items || []).map((item) => ({
       id: uid(), label: item.label, completed: false,
     }));
-    const checklist: OnboardingChecklist = { id, associationId: input.associationId, title: input.title, items, createdBy, createdAt: now() };
+    const checklist: OnboardingChecklist = { id, associationId: input.associationId, title: input.title, items, createdBy, createdAt: now(), organizationId: 1 };
     await db.insert(s.onboardingChecklists).values({
       id, associationId: input.associationId, title: input.title,
       items, createdBy, createdAt: now(),
@@ -531,7 +531,7 @@ export class DatabaseStorage implements IStorage {
       type: r.type, amount: r.amount, amountPaid: r.amountPaid,
       status: r.status as AccountingItem["status"], dueDate: r.dueDate,
       unit: r.unit ?? undefined, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -543,13 +543,13 @@ export class DatabaseStorage implements IStorage {
       type: r.type, amount: r.amount, amountPaid: r.amountPaid,
       status: r.status as AccountingItem["status"], dueDate: r.dueDate,
       unit: r.unit ?? undefined, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
   async createAccountingItem(input: InsertAccountingItem, createdBy: string): Promise<AccountingItem> {
     const id = uid();
-    const item: AccountingItem = { id, ...input, amountPaid: input.amountPaid ?? 0, createdBy, createdAt: now() };
+    const item: AccountingItem = { id, ...input, amountPaid: input.amountPaid ?? 0, createdBy, createdAt: now(), organizationId: 1 };
     await db.insert(s.accountingItems).values({
       id, associationId: input.associationId, description: input.description,
       type: input.type, amount: input.amount, amountPaid: input.amountPaid ?? 0,
@@ -582,7 +582,7 @@ export class DatabaseStorage implements IStorage {
       invoiceNumber: r.invoiceNumber ?? undefined, invoiceDate: r.invoiceDate,
       totalAmount: r.totalAmount, status: r.status as Invoice["status"],
       lineItems: (r.lineItems as any[]) || [], notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -594,7 +594,7 @@ export class DatabaseStorage implements IStorage {
       invoiceNumber: r.invoiceNumber ?? undefined, invoiceDate: r.invoiceDate,
       totalAmount: r.totalAmount, status: r.status as Invoice["status"],
       lineItems: (r.lineItems as any[]) || [], notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt,
+      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
@@ -608,7 +608,7 @@ export class DatabaseStorage implements IStorage {
       id, associationId: input.associationId, vendor: input.vendor,
       invoiceNumber: input.invoiceNumber, invoiceDate: input.invoiceDate,
       totalAmount: input.totalAmount, status: "uploaded", lineItems,
-      notes: input.notes, createdBy, createdAt: now(),
+      notes: input.notes, createdBy, createdAt: now(), organizationId: 1,
     };
     await db.insert(s.invoices).values({
       id, associationId: input.associationId, vendor: input.vendor,
@@ -652,7 +652,7 @@ export class DatabaseStorage implements IStorage {
       contactName: r.contactName, phone: r.phone, email: r.email,
       category: r.category, status: r.status as "active" | "inactive",
       insuranceExpiry: r.insuranceExpiry, notes: r.notes,
-      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt,
+      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -663,7 +663,7 @@ export class DatabaseStorage implements IStorage {
       contactName: r.contactName, phone: r.phone, email: r.email,
       category: r.category, status: r.status as "active" | "inactive",
       insuranceExpiry: r.insuranceExpiry, notes: r.notes,
-      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt,
+      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -675,7 +675,7 @@ export class DatabaseStorage implements IStorage {
       contactName: r.contactName, phone: r.phone, email: r.email,
       category: r.category, status: r.status as "active" | "inactive",
       insuranceExpiry: r.insuranceExpiry, notes: r.notes,
-      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt,
+      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 
@@ -764,7 +764,7 @@ export class DatabaseStorage implements IStorage {
       effectiveDate: r.effectiveDate, expirationDate: r.expirationDate,
       retentionYears: r.retentionYears, isPublic: r.isPublic,
       tags: (r.tags as string[]) || [], createdBy: r.createdBy,
-      createdAt: r.createdAt, updatedAt: r.updatedAt,
+      createdAt: r.createdAt, updatedAt: r.updatedAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -779,7 +779,7 @@ export class DatabaseStorage implements IStorage {
       effectiveDate: r.effectiveDate, expirationDate: r.expirationDate,
       retentionYears: r.retentionYears, isPublic: r.isPublic,
       tags: (r.tags as string[]) || [], createdBy: r.createdBy,
-      createdAt: r.createdAt, updatedAt: r.updatedAt,
+      createdAt: r.createdAt, updatedAt: r.updatedAt, organizationId: (r as any).organizationId ?? 1,
     }));
   }
 
@@ -794,7 +794,7 @@ export class DatabaseStorage implements IStorage {
       effectiveDate: r.effectiveDate, expirationDate: r.expirationDate,
       retentionYears: r.retentionYears, isPublic: r.isPublic,
       tags: (r.tags as string[]) || [], createdBy: r.createdBy,
-      createdAt: r.createdAt, updatedAt: r.updatedAt,
+      createdAt: r.createdAt, updatedAt: r.updatedAt, organizationId: (r as any).organizationId ?? 1,
     };
   }
 

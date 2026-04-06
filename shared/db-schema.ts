@@ -1,4 +1,41 @@
-import { pgTable, text, integer, real, boolean, timestamp, jsonb, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, real, boolean, timestamp, jsonb, primaryKey, serial } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+// ── Multi-tenancy: Organizations ──────────────────────────────
+export const organizations = pgTable("organizations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  domain: text("domain"),
+  logoUrl: text("logo_url"),
+  plan: text("plan").notNull().default("free"),
+  settings: text("settings"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  customDomain: text("custom_domain"),
+  domainVerified: boolean("domain_verified").notNull().default(false),
+  domainVerificationToken: text("domain_verification_token"),
+  subdomain: text("subdomain"),
+  onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+  maxUsers: integer("max_users").default(50),
+});
+
+export const memberships = pgTable("memberships", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  organizationId: integer("organization_id").notNull(),
+  role: text("role").notNull().default("staff"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+export const insertOrganizationSchema = createInsertSchema(organizations).omit({ id: true });
+export const insertMembershipSchema = createInsertSchema(memberships).omit({ id: true });
+
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+export type Organization = typeof organizations.$inferSelect;
+export type InsertMembership = z.infer<typeof insertMembershipSchema>;
+export type Membership = typeof memberships.$inferSelect;
 
 // ── Users ──
 export const users = pgTable("users", {
@@ -6,7 +43,9 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   role: text("role").notNull().default("staff"),
+  active: boolean("active").notNull().default(true),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Associations ──
@@ -18,6 +57,7 @@ export const associations = pgTable("associations", {
   accentColor: text("accent_color").notNull().default("#8BC53F"),
   darkColor: text("dark_color").notNull().default("#1B3E1E"),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── User ↔ Association ──
@@ -39,6 +79,7 @@ export const notices = pgTable("notices", {
   meetingUrl: text("meeting_url"),
   postedDate: text("posted_date").notNull(),
   createdBy: text("created_by").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Meetings ──
@@ -53,6 +94,7 @@ export const meetings = pgTable("meetings", {
   minutesUrl: text("minutes_url"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Tickets ──
@@ -66,6 +108,7 @@ export const tickets = pgTable("tickets", {
   assignee: text("assignee"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Insurance Policies ──
@@ -81,6 +124,7 @@ export const insurancePolicies = pgTable("insurance_policies", {
   notes: text("notes"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Mailing Requests ──
@@ -96,6 +140,7 @@ export const mailingRequests = pgTable("mailing_requests", {
   targetMailDate: text("target_mail_date"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Onboarding Checklists ──
@@ -106,6 +151,7 @@ export const onboardingChecklists = pgTable("onboarding_checklists", {
   items: jsonb("items").notNull().default([]),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Accounting Items ──
@@ -122,6 +168,7 @@ export const accountingItems = pgTable("accounting_items", {
   notes: text("notes"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Invoices ──
@@ -137,6 +184,7 @@ export const invoices = pgTable("invoices", {
   notes: text("notes"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Vendors ──
@@ -154,6 +202,7 @@ export const vendors = pgTable("vendors", {
   cincVendorId: text("cinc_vendor_id"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Documents ──
@@ -174,6 +223,7 @@ export const documents = pgTable("documents", {
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
 // ── Magic Codes ──
@@ -183,9 +233,10 @@ export const magicCodes = pgTable("magic_codes", {
   code: text("code").notNull(),
   expiresAt: integer("expires_at").notNull(),
   used: boolean("used").notNull().default(false),
+  organizationId: integer("organization_id").notNull().default(1),
 });
 
-// ── CINC Settings (singleton) ──
+// ── CINC Settings (singleton per org) ──
 export const cincSettings = pgTable("cinc_settings", {
   id: text("id").primaryKey().default("singleton"),
   clientId: text("client_id").notNull().default(""),
@@ -197,4 +248,54 @@ export const cincSettings = pgTable("cinc_settings", {
   syncStatus: text("sync_status").notNull().default("idle"),
   syncLog: jsonb("sync_log").notNull().default([]),
   lastSyncData: jsonb("last_sync_data"),
+  organizationId: integer("organization_id").notNull().default(1),
 });
+
+// ── Branding Settings (per org) ──
+export const brandingSettings = pgTable("branding_settings", {
+  id: serial("id").primaryKey(),
+  logoUrl: text("logo_url"),
+  faviconUrl: text("favicon_url"),
+  companyName: text("company_name").notNull().default("Vine Management"),
+  footerText: text("footer_text"),
+  primaryColor: text("primary_color").notNull().default("#317C3C"),
+  sidebarColor: text("sidebar_color").notNull().default("#1B3E1E"),
+  accentColor: text("accent_color").notNull().default("#8BC53F"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  organizationId: integer("organization_id").notNull().default(1),
+});
+
+export const insertBrandingSettingsSchema = createInsertSchema(brandingSettings).omit({ id: true });
+export type InsertBrandingSettings = z.infer<typeof insertBrandingSettingsSchema>;
+export type BrandingSettings = typeof brandingSettings.$inferSelect;
+
+// ── Role Permissions ──
+export const ROLE_PERMISSIONS = {
+  super_admin: {
+    manageUsers: true,
+    manageAssociations: true,
+    manageBranding: true,
+    manageSettings: true,
+    manageContent: true,
+    viewAllContent: true,
+    deleteContent: true,
+  },
+  association_admin: {
+    manageUsers: false,
+    manageAssociations: false,
+    manageBranding: false,
+    manageSettings: false,
+    manageContent: true,
+    viewAllContent: true,
+    deleteContent: true,
+  },
+  staff: {
+    manageUsers: false,
+    manageAssociations: false,
+    manageBranding: false,
+    manageSettings: false,
+    manageContent: false,
+    viewAllContent: true,
+    deleteContent: false,
+  },
+} as const;

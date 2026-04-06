@@ -75,13 +75,15 @@ export type Association = z.infer<typeof associationSchema>;
 export const insertAssociationSchema = associationSchema.omit({ id: true, createdAt: true });
 export type InsertAssociation = z.infer<typeof insertAssociationSchema>;
 
-// ── User (no password — magic link auth) ──
+// ── User ──
 export const userSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   name: z.string(),
   role: z.enum(ROLES),
   active: z.boolean().default(true),
+  picture: z.string().optional(),
+  authMethod: z.string().default("magic_link"),
   createdAt: z.string(),
   organizationId: z.number().default(1),
 });

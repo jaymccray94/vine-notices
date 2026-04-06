@@ -627,6 +627,7 @@ export class MemStorage implements IStorage {
       name: input.name,
       role: input.role,
       active: true,
+      authMethod: "magic_link",
       createdAt: now(),
       organizationId: 1,
     };

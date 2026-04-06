@@ -521,7 +521,7 @@ function PortalLayout() {
 }
 
 function AppRouter() {
-  const { user } = useAuth();
+  const { user, restoring } = useAuth();
   const [location] = useHashLocation();
 
   // Public embed routes are always accessible
@@ -530,6 +530,17 @@ function AppRouter() {
   }
   if (location.startsWith("/embed/")) {
     return <EmbedNoticesPage />;
+  }
+
+  // Show loading while restoring session from cookie
+  if (restoring) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1B3E1E] via-[#1B293E] to-[#1B3E1E]">
+        <div className="flex flex-col items-center gap-3">
+          <Leaf className="w-8 h-8 text-white/50 animate-pulse" />
+        </div>
+      </div>
+    );
   }
 
   // Everything else requires auth

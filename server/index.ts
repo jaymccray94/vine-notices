@@ -25,11 +25,11 @@ app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com", "https://apis.google.com", "https://www.gstatic.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
       imgSrc: ["'self'", "data:", "https:", "blob:"],
-      connectSrc: ["'self'", "wss:"],
-      frameSrc: ["'self'", "blob:"],
+      connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "wss:"],
+      frameSrc: ["'self'", "blob:", "https://accounts.google.com", "https://www.google.com"],
       fontSrc: ["'self'"],
     },
   } : false, // Disable CSP in development for Vite HMR

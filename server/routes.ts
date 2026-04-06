@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { OAuth2Client } from "google-auth-library";
 import { storage, FLORIDA_DOCUMENT_CATEGORIES } from "./storage";
 import { magicLinkRequestSchema, magicLinkVerifySchema, insertUserSchema, insertAssociationSchema, insertNoticeSchema, insertMeetingSchema, insertTicketSchema, insertInsurancePolicySchema, insertMailingRequestSchema, insertOnboardingChecklistSchema, insertAccountingItemSchema, insertInvoiceSchema } from "@shared/schema";
 import { requireAuth, requireSuperAdmin, createSession, deleteSession, setAuthCookie, clearAuthCookie } from "./middleware/auth";
@@ -42,6 +43,135 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   const meetingNoticesStore: any[] = [];
   const meetingMinutesStore: any[] = [];
+
+  // ══════════════════════════════════════════════
+  // ── Auth Config ──
+  // ══════════════════════════════════════════════
+
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+
+  app.get("/api/auth/config", async (_req, res) => {
+    res.json({
+      googleClientId: GOOGLE_CLIENT_ID || null,
+      ssoEnabled: !!GOOGLE_CLIENT_ID,
+      allowEmailAuth: true,
+      allowPasswordAuth: true,
+      orgName: "Vine Management",
+      demoMode: !GOOGLE_CLIENT_ID,
+    });
+  });
+
+  // ══════════════════════════════════════════════
+  // ── Google OAuth ──
+  // ══════════════════════════════════════════════
+
+  app.post("/api/auth/google", rateLimit(10, 60_000), async (req, res) => {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ error: "Missing credential" });
+
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(400).json({ error: "Google sign-in is not configured" });
+    }
+
+    try {
+      const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+      const ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        return res.status(401).json({ error: "Invalid token payload" });
+      }
+
+      // Look up or auto-create user
+      let user = await storage.getUserByEmail(payload.email);
+      if (!user) {
+        user = await storage.createUser({
+          email: payload.email,
+          name: payload.name || payload.email.split("@")[0],
+          role: "staff",
+        });
+        logger.info({ email: payload.email }, "Auto-created user via Google sign-in");
+      }
+
+      if (!(user as any).active) {
+        return res.status(403).json({ error: "Your account has been deactivated" });
+      }
+
+      const token = createSession({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        organizationId: (user as any).organizationId || 1,
+      });
+      setAuthCookie(res, token);
+      const associations = await storage.getUserAssociations(user.id);
+      logger.info({ userId: user.id, email: user.email }, "Google sign-in successful");
+      res.json({ token, user: { ...user, associations } });
+    } catch (err: any) {
+      logger.error({ err }, "Google auth error");
+      res.status(401).json({ error: "Invalid Google token" });
+    }
+  });
+
+  // ══════════════════════════════════════════════
+  // ── Email/Password Auth ──
+  // ══════════════════════════════════════════════
+
+  app.post("/api/auth/password", rateLimit(10, 60_000), async (req, res) => {
+    const bcrypt = await import("bcryptjs");
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+
+    try {
+      const user = await storage.getUserByEmail(email.toLowerCase());
+      if (!user) return res.status(401).json({ error: "Invalid email or password" });
+      if (!(user as any).active) return res.status(403).json({ error: "Account deactivated" });
+
+      // Check if user has a password set
+      const fullUser = await storage.getUserById(user.id);
+      const passwordHash = (fullUser as any)?.passwordHash;
+      if (!passwordHash) {
+        return res.status(401).json({ error: "This account uses a different sign-in method" });
+      }
+
+      const valid = await bcrypt.compare(password, passwordHash);
+      if (!valid) return res.status(401).json({ error: "Invalid email or password" });
+
+      const token = createSession({
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        organizationId: (user as any).organizationId || 1,
+      });
+      setAuthCookie(res, token);
+      const associations = await storage.getUserAssociations(user.id);
+      logger.info({ userId: user.id, email: user.email }, "Password sign-in successful");
+      res.json({ token, user: { ...user, associations } });
+    } catch (err: any) {
+      logger.error({ err }, "Password auth error");
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // ── Change Password ──
+  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+    const bcrypt = await import("bcryptjs");
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+    try {
+      const hash = await bcrypt.hash(newPassword, 12);
+      await storage.updateUser(req.user!.userId, { passwordHash: hash } as any);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to change password" });
+    }
+  });
 
   // ══════════════════════════════════════════════
   // ── Magic Link Auth ──

@@ -44,6 +44,9 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   role: text("role").notNull().default("staff"),
   active: boolean("active").notNull().default(true),
+  picture: text("picture"),
+  passwordHash: text("password_hash"),
+  authMethod: text("auth_method").notNull().default("magic_link"), // "google" | "password" | "magic_link"
   createdAt: text("created_at").notNull(),
   organizationId: integer("organization_id").notNull().default(1),
 });

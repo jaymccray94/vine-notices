@@ -42,12 +42,12 @@ export class DatabaseStorage implements IStorage {
     const row = await db.query.users.findFirst({
       where: eq(s.users.email, email.toLowerCase()),
     });
-    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], active: row.active ?? true, createdAt: row.createdAt, organizationId: row.organizationId ?? 1 } : undefined;
+    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], active: row.active ?? true, authMethod: (row as any).authMethod ?? "magic_link", createdAt: row.createdAt, organizationId: row.organizationId ?? 1 } : undefined;
   }
 
   async getUserById(id: string): Promise<User | undefined> {
     const row = await db.query.users.findFirst({ where: eq(s.users.id, id) });
-    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], active: row.active ?? true, createdAt: row.createdAt, organizationId: row.organizationId ?? 1 } : undefined;
+    return row ? { id: row.id, email: row.email, name: row.name, role: row.role as User["role"], active: row.active ?? true, authMethod: (row as any).authMethod ?? "magic_link", createdAt: row.createdAt, organizationId: row.organizationId ?? 1 } : undefined;
   }
 
   // ── Magic Codes ──
@@ -87,14 +87,14 @@ export class DatabaseStorage implements IStorage {
     const result: SafeUser[] = [];
     for (const u of rows) {
       const associations = await this.getUserAssociations(u.id);
-      result.push({ id: u.id, email: u.email, name: u.name, role: u.role as User["role"], active: (u as any).active ?? true, createdAt: u.createdAt, organizationId: (u as any).organizationId ?? 1, associations });
+      result.push({ id: u.id, email: u.email, name: u.name, role: u.role as User["role"], active: (u as any).active ?? true, authMethod: (u as any).authMethod ?? "magic_link", createdAt: u.createdAt, organizationId: (u as any).organizationId ?? 1, associations });
     }
     return result;
   }
 
   async createUser(input: InsertUser): Promise<SafeUser> {
     const id = uid();
-    const user: User = { id, email: input.email, name: input.name, role: input.role, active: true, createdAt: now(), organizationId: 1 };
+    const user: User = { id, email: input.email, name: input.name, role: input.role, active: true, authMethod: "magic_link", createdAt: now(), organizationId: 1 };
     await db.insert(s.users).values(user);
     return { ...user };
   }

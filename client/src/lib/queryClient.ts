@@ -27,6 +27,7 @@ export async function apiRequest(
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
+    credentials: "include",
   });
 
   await throwIfResNotOk(res);
@@ -42,6 +43,7 @@ export async function apiUpload(
     method: "POST",
     headers,
     body: formData,
+    credentials: "include",
   });
   await throwIfResNotOk(res);
   return res;
@@ -54,7 +56,7 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const headers = authHeaders();
-    const res = await fetch(`${API_BASE}${queryKey.join("/")}`, { headers });
+    const res = await fetch(`${API_BASE}${queryKey.join("/")}`, { headers, credentials: "include" });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

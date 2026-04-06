@@ -22,6 +22,7 @@ declare module "http" {
 // ── Security headers ────────────────────────────────────────
 app.use(helmet({
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
     directives: {
       defaultSrc: ["'self'"],

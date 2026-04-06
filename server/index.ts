@@ -26,11 +26,11 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com", "https://apis.google.com", "https://www.gstatic.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "https:", "blob:"],
       connectSrc: ["'self'", "https://accounts.google.com", "https://oauth2.googleapis.com", "wss:"],
       frameSrc: ["'self'", "blob:", "https://accounts.google.com", "https://www.google.com"],
-      fontSrc: ["'self'"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
     },
   } : false, // Disable CSP in development for Vite HMR
 }));

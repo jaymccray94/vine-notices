@@ -44,11 +44,16 @@ const ALLOWED_ORIGINS = process.env.CORS_ORIGINS
 app.use(cors({
   origin: process.env.NODE_ENV === "production"
     ? (origin, callback) => {
-        if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vinemgmt.app")) {
-          callback(null, true);
-        } else {
-          callback(new Error("Not allowed by CORS"));
-        }
+        // Allow requests with no Origin header (same-origin navigations, non-CORS requests)
+        if (!origin) return callback(null, true);
+        // Allow explicitly configured origins
+        if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+        // Allow Vine Management domains
+        if (origin.endsWith(".vinemgmt.app")) return callback(null, true);
+        // Allow Railway deployment domains
+        if (origin.endsWith(".up.railway.app")) return callback(null, true);
+        // Reject unknown origins (don't throw — just omit CORS headers)
+        callback(null, false);
       }
     : true,
   credentials: true,
@@ -75,7 +80,7 @@ if (process.env.NODE_ENV === "production") {
     if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
       const origin = req.headers.origin;
       const appUrl = process.env.APP_URL || "";
-      if (origin && appUrl && !origin.startsWith(appUrl) && !origin.endsWith(".vinemgmt.app")) {
+      if (origin && appUrl && !origin.startsWith(appUrl) && !origin.endsWith(".vinemgmt.app") && !origin.endsWith(".up.railway.app")) {
         if (!req.path.startsWith("/api/webhooks/")) {
           return res.status(403).json({ code: "CSRF_ERROR", message: "Cross-origin request blocked" });
         }

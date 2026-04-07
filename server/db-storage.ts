@@ -26,7 +26,7 @@ import type {
   Invoice,
   InsertInvoice,
 } from "@shared/schema";
-import type { IStorage, CincSettings, Vendor, AssociationDocument } from "./storage";
+import type { IStorage, CincSettings, Vendor, AssociationDocument, BrandingData } from "./storage";
 
 function uid(): string {
   return crypto.randomUUID();
@@ -828,5 +828,59 @@ export class DatabaseStorage implements IStorage {
 
   async setDocumentFile(docId: string, filename: string | null): Promise<void> {
     await db.update(s.documents).set({ filename, updatedAt: now() }).where(eq(s.documents.id, docId));
+  }
+
+  // ── Branding ──
+  private static DEFAULT_BRANDING: BrandingData = {
+    companyName: "Vine Management",
+    primaryColor: "#317C3C",
+    sidebarColor: "#1B3E1E",
+    accentColor: "#8BC53F",
+  };
+
+  async getBranding(): Promise<BrandingData> {
+    try {
+      const row = await db.query.brandingSettings.findFirst({
+        where: eq(s.brandingSettings.organizationId, 1),
+      });
+      if (!row) return { ...DatabaseStorage.DEFAULT_BRANDING };
+      return {
+        companyName: row.companyName,
+        primaryColor: row.primaryColor,
+        sidebarColor: row.sidebarColor,
+        accentColor: row.accentColor,
+        logoUrl: row.logoUrl,
+        faviconUrl: row.faviconUrl,
+        footerText: row.footerText,
+      };
+    } catch {
+      return { ...DatabaseStorage.DEFAULT_BRANDING };
+    }
+  }
+
+  async updateBranding(data: Partial<BrandingData>): Promise<BrandingData> {
+    const existing = await db.query.brandingSettings.findFirst({
+      where: eq(s.brandingSettings.organizationId, 1),
+    });
+
+    const row = {
+      companyName: data.companyName,
+      primaryColor: data.primaryColor,
+      sidebarColor: data.sidebarColor,
+      accentColor: data.accentColor,
+      footerText: data.footerText,
+      logoUrl: data.logoUrl,
+      faviconUrl: data.faviconUrl,
+      organizationId: 1,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db.update(s.brandingSettings).set(row).where(eq(s.brandingSettings.id, existing.id));
+    } else {
+      await db.insert(s.brandingSettings).values(row);
+    }
+
+    return this.getBranding();
   }
 }

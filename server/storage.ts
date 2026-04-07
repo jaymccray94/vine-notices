@@ -32,6 +32,17 @@ function now(): string {
   return new Date().toISOString();
 }
 
+// ── Branding ──
+export interface BrandingData {
+  companyName: string;
+  primaryColor: string;
+  sidebarColor: string;
+  accentColor: string;
+  logoUrl?: string | null;
+  faviconUrl?: string | null;
+  footerText?: string | null;
+}
+
 // ── CINC API Settings ──
 export interface CincSettings {
   clientId: string;
@@ -175,6 +186,10 @@ export interface IStorage {
   updateDocument(id: string, data: Partial<AssociationDocument>): Promise<AssociationDocument | null>;
   deleteDocument(id: string): Promise<boolean>;
   setDocumentFile(docId: string, filename: string | null): Promise<void>;
+
+  // Branding
+  getBranding(): Promise<BrandingData>;
+  updateBranding(data: Partial<BrandingData>): Promise<BrandingData>;
 }
 
 export class MemStorage implements IStorage {
@@ -1115,6 +1130,23 @@ export class MemStorage implements IStorage {
       d.updatedAt = now();
       this.documents.set(docId, d);
     }
+  }
+
+  // ── Branding ──
+  private branding: BrandingData = {
+    companyName: "Vine Management",
+    primaryColor: "#317C3C",
+    sidebarColor: "#1B3E1E",
+    accentColor: "#8BC53F",
+  };
+
+  async getBranding(): Promise<BrandingData> {
+    return { ...this.branding };
+  }
+
+  async updateBranding(data: Partial<BrandingData>): Promise<BrandingData> {
+    this.branding = { ...this.branding, ...data };
+    return { ...this.branding };
   }
 }
 

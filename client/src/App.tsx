@@ -29,9 +29,8 @@ import {
 } from "@/components/ui/sidebar";
 import {
   Building2, FileText, Users, LogOut, Leaf, Video,
-  TicketCheck, ClipboardList, Mail, Calculator, Shield,
-  Sparkles, LayoutDashboard, Settings, FolderOpen, Store,
-  Globe, Search, Sun, Moon, Monitor, ChevronRight, Bell, Palette,
+  Sparkles, LayoutDashboard, Settings, FolderOpen,
+  Search, Sun, Moon, Monitor, ChevronRight, Bell, Palette,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
@@ -39,17 +38,9 @@ import LoginPage from "@/pages/login";
 import PortalDashboard from "@/pages/portal-dashboard";
 import AdminNoticesPage from "@/pages/admin-notices";
 import AdminMeetingsPage from "@/pages/admin-meetings";
+import AdminDocumentsPage from "@/pages/admin-documents";
 import AdminAssociationsPage from "@/pages/admin-associations";
 import AdminUsersPage from "@/pages/admin-users";
-import AdminTicketsPage from "@/pages/admin-tickets";
-import AdminInsurancePage from "@/pages/admin-insurance";
-import AdminMailingsPage from "@/pages/admin-mailings";
-import AdminOnboardingPage from "@/pages/admin-onboarding";
-import AdminAccountingPage from "@/pages/admin-accounting";
-import AdminInvoicesPage from "@/pages/admin-invoices";
-import AdminDocumentsPage from "@/pages/admin-documents";
-import AdminVendorsPage from "@/pages/admin-vendors";
-import AdminGlobalTicketsPage from "@/pages/admin-global-tickets";
 import AdminCincSettingsPage from "@/pages/admin-cinc-settings";
 import EmbedPreviewPage from "@/pages/embed-preview";
 import EmbedNoticesPage from "@/pages/embed-notices";
@@ -65,23 +56,11 @@ initTheme();
 
 // ── App navigation config ──
 const APP_NAV = [
-  { id: "notices", label: "Notices", icon: FileText, route: "/notices", status: "live" as const },
-  { id: "meetings", label: "Meetings", icon: Video, route: "/meetings", status: "live" as const },
-  { id: "tickets", label: "Tickets", icon: TicketCheck, route: "/tickets", status: "live" as const },
-  { id: "documents", label: "Documents", icon: FolderOpen, route: "/documents", status: "live" as const },
-  { id: "vendors", label: "Vendors", icon: Store, route: "/vendors", status: "live" as const },
-  { id: "onboarding", label: "Onboarding", icon: ClipboardList, route: "/onboarding", status: "live" as const },
-  { id: "mailings", label: "Mailings", icon: Mail, route: "/mailings", status: "live" as const },
-  { id: "accounting", label: "Accounting", icon: Calculator, route: "/accounting", status: "live" as const },
-  { id: "insurance", label: "Insurance", icon: Shield, route: "/insurance", status: "live" as const },
-  { id: "invoices", label: "AI Invoices", icon: Sparkles, route: "/invoices", status: "live" as const },
-  { id: "ai-notices", label: "AI Meeting Notices", icon: Sparkles, route: "/ai/meeting-notices", status: "live" as const },
-  { id: "ai-minutes", label: "AI Meeting Minutes", icon: ClipboardList, route: "/ai/meeting-minutes", status: "live" as const },
-];
-
-// ── Global navigation (cross-association) ──
-const GLOBAL_NAV = [
-  { id: "global-tickets", label: "All Tickets", icon: TicketCheck, route: "/global/tickets" },
+  { id: "notices", label: "Notices", icon: FileText, route: "/notices" },
+  { id: "meetings", label: "Meetings", icon: Video, route: "/meetings" },
+  { id: "documents", label: "Documents", icon: FolderOpen, route: "/documents" },
+  { id: "ai-notices", label: "AI Meeting Notices", icon: Sparkles, route: "/ai/meeting-notices" },
+  { id: "ai-minutes", label: "AI Meeting Minutes", icon: Sparkles, route: "/ai/meeting-minutes" },
 ];
 
 // ── Header breadcrumb labels ──
@@ -90,17 +69,9 @@ function getPageTitle(location: string, currentAssoc?: Association | null) {
   if (location === "/" || location === "") return "Portal";
   if (location === "/notices") return `${assocName} — Notices`;
   if (location === "/meetings") return `${assocName} — Meetings`;
-  if (location === "/tickets") return `${assocName} — Tickets`;
   if (location === "/documents") return `${assocName} — Documents`;
-  if (location === "/vendors") return `${assocName} — Vendors`;
-  if (location === "/onboarding") return `${assocName} — Onboarding`;
-  if (location === "/mailings") return `${assocName} — Mailings`;
-  if (location === "/accounting") return `${assocName} — Accounting`;
-  if (location === "/insurance") return `${assocName} — Insurance`;
-  if (location === "/invoices") return `${assocName} — AI Invoices`;
   if (location === "/ai/meeting-notices") return "AI Meeting Notices";
   if (location === "/ai/meeting-minutes") return "AI Meeting Minutes";
-  if (location === "/global/tickets") return "All Tickets";
   if (location === "/associations") return "Associations";
   if (location === "/cinc-settings") return "CINC Settings";
   if (location.startsWith("/preview/")) return "Embed Preview";
@@ -114,7 +85,6 @@ function getPageIcon(location: string) {
   if (location === "/" || location === "") return LayoutDashboard;
   const app = APP_NAV.find((a) => a.route === location);
   if (app) return app.icon;
-  if (location === "/global/tickets") return TicketCheck;
   if (location === "/associations") return Building2;
   if (location === "/cinc-settings") return Settings;
   if (location.startsWith("/preview/")) return Building2;
@@ -138,7 +108,6 @@ function PortalLayout() {
   // Keyboard shortcuts: / to focus search
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Don't trigger when typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.key === "/" && !e.metaKey && !e.ctrlKey) {
@@ -174,8 +143,7 @@ function PortalLayout() {
 
   const ThemeIcon = currentTheme === "dark" ? Moon : currentTheme === "light" ? Sun : Monitor;
 
-  // Pages that don't require an association selection
-  const isGlobalPage = location === "/global/tickets" || location === "/associations" || location === "/users" || location === "/cinc-settings" || location === "/settings" || location === "/branding" || location.startsWith("/preview/") || location.startsWith("/ai/");
+  const isGlobalPage = location === "/associations" || location === "/users" || location === "/cinc-settings" || location === "/settings" || location === "/branding" || location.startsWith("/preview/") || location.startsWith("/ai/");
 
   function handleNavigate(path: string) {
     if (path.startsWith("/hub/")) {
@@ -228,7 +196,6 @@ function PortalLayout() {
                         onClick={() => { setSelectedAssocId(a.id); setLocation("/"); }}
                         isActive={selectedAssocId === a.id && (location === "/" || location === "")}
                         className="gap-2"
-                        data-testid={`sidebar-assoc-${a.id}`}
                       >
                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: a.primaryColor }} />
                         <span className="truncate text-[13px]">{a.name}</span>
@@ -252,37 +219,10 @@ function PortalLayout() {
                       <SidebarMenuButton
                         asChild
                         isActive={location === app.route}
-                        data-testid={`sidebar-app-${app.id}`}
                       >
                         <Link href={app.route}>
                           <app.icon className="w-4 h-4" />
                           <span className="text-[13px]">{app.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            {/* Global section */}
-            <SidebarSeparator />
-            <SidebarGroup>
-              <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40">
-                Global
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {GLOBAL_NAV.map((item) => (
-                    <SidebarMenuItem key={item.id}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={location === item.route}
-                        data-testid={`sidebar-global-${item.id}`}
-                      >
-                        <Link href={item.route}>
-                          <item.icon className="w-4 h-4" />
-                          <span className="text-[13px]">{item.label}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -302,33 +242,24 @@ function PortalLayout() {
                   <SidebarGroupContent>
                     <SidebarMenu>
                       <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={location === "/associations"}
-                        >
-                          <Link href="/associations" data-testid="sidebar-associations">
+                        <SidebarMenuButton asChild isActive={location === "/associations"}>
+                          <Link href="/associations">
                             <Building2 className="w-4 h-4" />
                             <span className="text-[13px]">Associations</span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                       <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={location === "/users"}
-                        >
-                          <Link href="/users" data-testid="sidebar-users">
+                        <SidebarMenuButton asChild isActive={location === "/users"}>
+                          <Link href="/users">
                             <Users className="w-4 h-4" />
                             <span className="text-[13px]">Users</span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                       <SidebarMenuItem>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={location === "/cinc-settings"}
-                        >
-                          <Link href="/cinc-settings" data-testid="sidebar-cinc-settings">
+                        <SidebarMenuButton asChild isActive={location === "/cinc-settings"}>
+                          <Link href="/cinc-settings">
                             <Settings className="w-4 h-4" />
                             <span className="text-[13px]">CINC Settings</span>
                           </Link>
@@ -345,7 +276,6 @@ function PortalLayout() {
             <button
               onClick={() => setNotifPrefsOpen(true)}
               className="flex items-center gap-2 text-[13px] text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
-              data-testid="button-notifications"
             >
               <Bell className="w-3.5 h-3.5" />
               <span>Notifications</span>
@@ -353,7 +283,6 @@ function PortalLayout() {
             <button
               onClick={cycleTheme}
               className="flex items-center gap-2 text-[13px] text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
-              data-testid="button-theme-toggle"
               title={`Theme: ${currentTheme}`}
             >
               <ThemeIcon className="w-3.5 h-3.5" />
@@ -365,7 +294,7 @@ function PortalLayout() {
                 isActive={location === "/settings" || location === "/branding"}
                 className="text-sidebar-foreground/60 hover:text-sidebar-foreground"
               >
-                <Link href="/settings" data-testid="sidebar-settings">
+                <Link href="/settings">
                   <Settings className="w-3.5 h-3.5" />
                   <span className="text-[13px]">Settings</span>
                 </Link>
@@ -374,7 +303,6 @@ function PortalLayout() {
             <button
               onClick={logout}
               className="flex items-center gap-2 text-[13px] text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors w-full px-2 py-1.5 rounded-md hover:bg-sidebar-accent"
-              data-testid="button-logout"
             >
               <LogOut className="w-3.5 h-3.5" />
               Sign Out
@@ -385,8 +313,7 @@ function PortalLayout() {
         <div className="flex flex-col flex-1 min-w-0">
           <header className="flex items-center justify-between px-4 py-2 border-b bg-background">
             <div className="flex items-center gap-3 min-w-0">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
-              {/* Breadcrumb navigation */}
+              <SidebarTrigger />
               <nav className="flex items-center gap-1 text-sm min-w-0">
                 <button
                   onClick={() => setLocation("/")}
@@ -417,11 +344,9 @@ function PortalLayout() {
               </nav>
             </div>
             <div className="flex items-center gap-2">
-              {/* Search button */}
               <button
                 onClick={() => setSearchOpen(true)}
                 className="flex items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground border rounded-md hover:bg-muted transition-colors"
-                data-testid="button-search"
               >
                 <Search className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Search</span>
@@ -458,29 +383,8 @@ function PortalLayout() {
                   </div>
                 )}
               </Route>
-              <Route path="/tickets">
-                {selectedAssocId ? <AdminTicketsPage associationId={selectedAssocId} key={`tickets-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
-              </Route>
               <Route path="/documents">
                 {selectedAssocId ? <AdminDocumentsPage associationId={selectedAssocId} key={`documents-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
-              </Route>
-              <Route path="/vendors">
-                {selectedAssocId ? <AdminVendorsPage associationId={selectedAssocId} key={`vendors-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
-              </Route>
-              <Route path="/onboarding">
-                {selectedAssocId ? <AdminOnboardingPage associationId={selectedAssocId} key={`onboarding-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
-              </Route>
-              <Route path="/mailings">
-                {selectedAssocId ? <AdminMailingsPage associationId={selectedAssocId} key={`mailings-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
-              </Route>
-              <Route path="/accounting">
-                {selectedAssocId ? <AdminAccountingPage associationId={selectedAssocId} key={`accounting-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
-              </Route>
-              <Route path="/insurance">
-                {selectedAssocId ? <AdminInsurancePage associationId={selectedAssocId} key={`insurance-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
-              </Route>
-              <Route path="/invoices">
-                {selectedAssocId ? <AdminInvoicesPage associationId={selectedAssocId} key={`invoices-${selectedAssocId}`} /> : <div className="flex items-center justify-center h-full text-muted-foreground"><p className="text-sm">Select an association first.</p></div>}
               </Route>
               <Route path="/ai/meeting-notices">
                 <AIMeetingNoticesPage />
@@ -488,11 +392,8 @@ function PortalLayout() {
               <Route path="/ai/meeting-minutes">
                 <AIMeetingMinutesPage />
               </Route>
-              {/* Global pages */}
-              <Route path="/global/tickets" component={AdminGlobalTicketsPage} />
               {/* Admin pages */}
               {isSuperAdmin && <Route path="/cinc-settings" component={AdminCincSettingsPage} />}
-              {/* Embed preview */}
               <Route path="/preview/:slug">
                 {(params) => <EmbedPreviewPage slug={params.slug} />}
               </Route>
@@ -532,7 +433,6 @@ function AppRouter() {
     return <EmbedNoticesPage />;
   }
 
-  // Show loading while restoring session from cookie
   if (restoring) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1B3E1E] via-[#1B293E] to-[#1B3E1E]">
@@ -543,7 +443,6 @@ function AppRouter() {
     );
   }
 
-  // Everything else requires auth
   if (!user) {
     return <LoginPage />;
   }

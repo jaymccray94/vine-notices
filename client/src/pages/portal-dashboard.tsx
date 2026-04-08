@@ -6,11 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  FileText, Video, TicketCheck, ClipboardList, Mail,
-  Calculator, Shield, Sparkles, ArrowRight, Building2,
-  FolderOpen, Store,
+  FileText, Video, ArrowRight, Building2, FolderOpen,
 } from "lucide-react";
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 interface PortalApp {
   id: string;
@@ -24,27 +22,13 @@ interface PortalApp {
 const APPS: PortalApp[] = [
   { id: "notices", label: "Notices", description: "Post and manage official community notices with PDF attachments", icon: FileText, route: "/notices", color: "#317C3C" },
   { id: "meetings", label: "Meetings", description: "Record meeting videos, agendas, and minutes", icon: Video, route: "/meetings", color: "#2B6CB0" },
-  { id: "tickets", label: "Tickets", description: "Internal ticketing system with board and list views", icon: TicketCheck, route: "/tickets", color: "#805AD5" },
-  { id: "onboarding", label: "Onboarding", description: "Community onboarding flows, checklists, and templates", icon: ClipboardList, route: "/onboarding", color: "#D69E2E" },
-  { id: "mailings", label: "Mailings", description: "Request and track community mailings", icon: Mail, route: "/mailings", color: "#DD6B20" },
-  { id: "accounting", label: "Accounting", description: "Track outstanding items and financial workflows", icon: Calculator, route: "/accounting", color: "#38A169" },
-  { id: "insurance", label: "Insurance", description: "Track association insurance policies and renewal dates", icon: Shield, route: "/insurance", color: "#E53E3E" },
-  { id: "invoices", label: "AI Invoice Splitter", description: "Scan and split invoices automatically with AI", icon: Sparkles, route: "/invoices", color: "#319795" },
   { id: "documents", label: "Documents", description: "Florida-compliant document library with retention tracking", icon: FolderOpen, route: "/documents", color: "#6366F1" },
-  { id: "vendors", label: "Vendors", description: "Manage vendors and service providers with CINC integration", icon: Store, route: "/vendors", color: "#EC4899" },
 ];
 
 interface StatsData {
   notices: number;
   meetings: number;
-  tickets: { open: number; inProgress: number; total: number };
-  insurance: { total: number; expiringSoon: number };
-  mailings: { pending: number; total: number };
-  onboarding: { completed: number; total: number; items: { completed: number; total: number } };
-  accounting: { outstanding: number; overdue: number; totalOwed: number };
-  invoices: { pending: number; total: number };
   documents: { current: number; total: number };
-  vendors: { active: number; total: number };
 }
 
 export default function PortalDashboard({
@@ -79,14 +63,12 @@ export default function PortalDashboard({
           <p className="text-sm text-muted-foreground">Select an association from the sidebar to get started.</p>
         </div>
 
-        {/* Show all associations as cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {associations.map((a) => (
             <Card
               key={a.id}
               className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5"
               onClick={() => onNavigate(`/hub/${a.id}`)}
-              data-testid={`card-assoc-select-${a.id}`}
             >
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -109,15 +91,11 @@ export default function PortalDashboard({
     );
   }
 
-  // Stat summaries for the top row
   const statCards = stats
     ? [
         { icon: FileText, label: "Notices", value: stats.notices, color: "#317C3C" },
         { icon: Video, label: "Meetings", value: stats.meetings, color: "#2B6CB0" },
-        { icon: TicketCheck, label: "Open Tickets", value: stats.tickets.open + stats.tickets.inProgress, color: "#805AD5" },
-        { icon: Shield, label: "Policies", value: stats.insurance.total, extra: stats.insurance.expiringSoon > 0 ? `${stats.insurance.expiringSoon} expiring` : undefined, extraColor: "#E53E3E", color: "#E53E3E" },
         { icon: FolderOpen, label: "Documents", value: stats.documents.total, extra: `${stats.documents.current} current`, color: "#6366F1" },
-        { icon: Store, label: "Vendors", value: stats.vendors.total, extra: `${stats.vendors.active} active`, color: "#EC4899" },
       ]
     : null;
 
@@ -140,9 +118,9 @@ export default function PortalDashboard({
       </div>
 
       {/* Quick stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {statsLoading || !statCards ? (
-          [1, 2, 3, 4, 5, 6].map((i) => (
+          [1, 2, 3].map((i) => (
             <Card key={i}>
               <CardContent className="p-3">
                 <Skeleton className="h-10 w-full" />
@@ -156,12 +134,12 @@ export default function PortalDashboard({
                 <div className="flex items-center gap-2">
                   <s.icon className="w-4 h-4 text-muted-foreground" />
                   <div>
-                    <p className="text-lg font-bold leading-none" data-testid={`stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <p className="text-lg font-bold leading-none">
                       {s.value}
                     </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
                     {s.extra && (
-                      <p className="text-[10px] mt-0.5 font-medium" style={{ color: s.extraColor }}>{s.extra}</p>
+                      <p className="text-[10px] mt-0.5 font-medium text-muted-foreground">{s.extra}</p>
                     )}
                   </div>
                 </div>
@@ -171,62 +149,9 @@ export default function PortalDashboard({
         )}
       </div>
 
-      {/* Charts row */}
+      {/* Content overview chart */}
       {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          {/* Ticket status pie chart */}
-          {stats.tickets.total > 0 && (
-            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onNavigate("/tickets")}>
-              <CardContent className="p-4">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Ticket Status</h3>
-                <div className="flex items-center gap-4">
-                  <div className="w-24 h-24">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: "Open", value: stats.tickets.open, color: "#3B82F6" },
-                            { name: "In Progress", value: stats.tickets.inProgress, color: "#F59E0B" },
-                            { name: "Done", value: Math.max(0, stats.tickets.total - stats.tickets.open - stats.tickets.inProgress), color: "#22C55E" },
-                          ].filter((d) => d.value > 0)}
-                          dataKey="value"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={22}
-                          outerRadius={40}
-                          strokeWidth={2}
-                        >
-                          {[
-                            { color: "#3B82F6" },
-                            { color: "#F59E0B" },
-                            { color: "#22C55E" },
-                          ].map((entry, index) => (
-                            <Cell key={index} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs">
-                      <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                      <span>Open: {stats.tickets.open}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                      <span>In Progress: {stats.tickets.inProgress}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                      <span>Done: {Math.max(0, stats.tickets.total - stats.tickets.open - stats.tickets.inProgress)}</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Activity overview bar chart */}
+        <div className="mb-6">
           <Card>
             <CardContent className="p-4">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Content Overview</h3>
@@ -237,8 +162,6 @@ export default function PortalDashboard({
                       { name: "Notices", count: stats.notices, fill: "#317C3C" },
                       { name: "Meetings", count: stats.meetings, fill: "#2B6CB0" },
                       { name: "Docs", count: stats.documents.total, fill: "#6366F1" },
-                      { name: "Vendors", count: stats.vendors.total, fill: "#EC4899" },
-                      { name: "Invoices", count: stats.invoices.total, fill: "#319795" },
                     ]}
                     layout="vertical"
                     margin={{ left: 0, right: 8, top: 0, bottom: 0 }}
@@ -254,8 +177,6 @@ export default function PortalDashboard({
                         { fill: "#317C3C" },
                         { fill: "#2B6CB0" },
                         { fill: "#6366F1" },
-                        { fill: "#EC4899" },
-                        { fill: "#319795" },
                       ].map((entry, index) => (
                         <Cell key={index} fill={entry.fill} />
                       ))}
@@ -268,7 +189,7 @@ export default function PortalDashboard({
         </div>
       )}
 
-      {/* All apps - all active */}
+      {/* Apps */}
       <div className="mb-6">
         <h2 className="text-sm font-semibold text-foreground mb-3">Apps</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -277,7 +198,6 @@ export default function PortalDashboard({
               key={app.id}
               className="cursor-pointer hover:shadow-md transition-all hover:-translate-y-0.5 group"
               onClick={() => onNavigate(app.route)}
-              data-testid={`card-app-${app.id}`}
             >
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">

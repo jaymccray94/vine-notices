@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, boolean, timestamp, jsonb, primaryKey, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, jsonb, primaryKey, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -46,7 +46,7 @@ export const users = pgTable("users", {
   active: boolean("active").notNull().default(true),
   picture: text("picture"),
   passwordHash: text("password_hash"),
-  authMethod: text("auth_method").notNull().default("magic_link"), // "google" | "password" | "magic_link"
+  authMethod: text("auth_method").notNull().default("magic_link"),
   createdAt: text("created_at").notNull(),
   organizationId: integer("organization_id").notNull().default(1),
 });
@@ -95,114 +95,6 @@ export const meetings = pgTable("meetings", {
   videoUrl: text("video_url"),
   agendaUrl: text("agenda_url"),
   minutesUrl: text("minutes_url"),
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  organizationId: integer("organization_id").notNull().default(1),
-});
-
-// ── Tickets ──
-export const tickets = pgTable("tickets", {
-  id: text("id").primaryKey(),
-  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  description: text("description"),
-  status: text("status").notNull().default("open"),
-  priority: text("priority").notNull().default("medium"),
-  assignee: text("assignee"),
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  organizationId: integer("organization_id").notNull().default(1),
-});
-
-// ── Insurance Policies ──
-export const insurancePolicies = pgTable("insurance_policies", {
-  id: text("id").primaryKey(),
-  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }),
-  carrier: text("carrier").notNull(),
-  policyNumber: text("policy_number").notNull(),
-  coverageType: text("coverage_type").notNull(),
-  premium: real("premium"),
-  effectiveDate: text("effective_date").notNull(),
-  expirationDate: text("expiration_date").notNull(),
-  notes: text("notes"),
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  organizationId: integer("organization_id").notNull().default(1),
-});
-
-// ── Mailing Requests ──
-export const mailingRequests = pgTable("mailing_requests", {
-  id: text("id").primaryKey(),
-  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  description: text("description"),
-  recipientCount: integer("recipient_count"),
-  mailingType: text("mailing_type").notNull(),
-  status: text("status").notNull().default("draft"),
-  requestedDate: text("requested_date").notNull(),
-  targetMailDate: text("target_mail_date"),
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  organizationId: integer("organization_id").notNull().default(1),
-});
-
-// ── Onboarding Checklists ──
-export const onboardingChecklists = pgTable("onboarding_checklists", {
-  id: text("id").primaryKey(),
-  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  items: jsonb("items").notNull().default([]),
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  organizationId: integer("organization_id").notNull().default(1),
-});
-
-// ── Accounting Items ──
-export const accountingItems = pgTable("accounting_items", {
-  id: text("id").primaryKey(),
-  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }),
-  description: text("description").notNull(),
-  type: text("type").notNull(),
-  amount: real("amount").notNull(),
-  amountPaid: real("amount_paid").notNull().default(0),
-  status: text("status").notNull().default("outstanding"),
-  dueDate: text("due_date").notNull(),
-  unit: text("unit"),
-  notes: text("notes"),
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  organizationId: integer("organization_id").notNull().default(1),
-});
-
-// ── Invoices ──
-export const invoices = pgTable("invoices", {
-  id: text("id").primaryKey(),
-  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }),
-  vendor: text("vendor").notNull(),
-  invoiceNumber: text("invoice_number"),
-  invoiceDate: text("invoice_date").notNull(),
-  totalAmount: real("total_amount").notNull(),
-  status: text("status").notNull().default("uploaded"),
-  lineItems: jsonb("line_items").notNull().default([]),
-  notes: text("notes"),
-  createdBy: text("created_by").notNull(),
-  createdAt: text("created_at").notNull(),
-  organizationId: integer("organization_id").notNull().default(1),
-});
-
-// ── Vendors ──
-export const vendors = pgTable("vendors", {
-  id: text("id").primaryKey(),
-  associationId: text("association_id").notNull().references(() => associations.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  contactName: text("contact_name"),
-  phone: text("phone"),
-  email: text("email"),
-  category: text("category").notNull().default("General"),
-  status: text("status").notNull().default("active"),
-  insuranceExpiry: text("insurance_expiry"),
-  notes: text("notes"),
-  cincVendorId: text("cinc_vendor_id"),
   createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(),
   organizationId: integer("organization_id").notNull().default(1),

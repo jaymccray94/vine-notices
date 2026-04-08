@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, FileText, Video, TicketCheck, FolderOpen, Store, X, Clock } from "lucide-react";
+import { Search, FileText, Video, FolderOpen, X, Clock } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getQueryFn } from "@/lib/queryClient";
 
 interface SearchResult {
   id: string;
-  type: "notice" | "meeting" | "ticket" | "document" | "vendor";
+  type: "notice" | "meeting" | "document";
   title: string;
   subtitle?: string;
   route: string;
@@ -14,9 +14,7 @@ interface SearchResult {
 const TYPE_CONFIG = {
   notice: { icon: FileText, label: "Notice", color: "text-blue-500" },
   meeting: { icon: Video, label: "Meeting", color: "text-purple-500" },
-  ticket: { icon: TicketCheck, label: "Ticket", color: "text-orange-500" },
   document: { icon: FolderOpen, label: "Document", color: "text-green-500" },
-  vendor: { icon: Store, label: "Vendor", color: "text-pink-500" },
 };
 
 const RECENT_KEY = "vine-notices-recent-searches";
@@ -84,12 +82,6 @@ export function GlobalSearch({ isOpen, onClose, onNavigate, associationId }: Glo
     enabled: isOpen && !!associationId && debouncedQuery.length >= 2,
   });
 
-  const { data: vendors = [] } = useQuery<any[]>({
-    queryKey: ["/api/vendors", associationId],
-    queryFn: getQueryFn({ on401: "returnNull" }),
-    enabled: isOpen && !!associationId && debouncedQuery.length >= 2,
-  });
-
   // Build results
   const results: SearchResult[] = [];
   const q = debouncedQuery.toLowerCase();
@@ -108,11 +100,6 @@ export function GlobalSearch({ isOpen, onClose, onNavigate, associationId }: Glo
     for (const d of documents) {
       if (d.title?.toLowerCase().includes(q) || d.category?.toLowerCase().includes(q)) {
         results.push({ id: d.id, type: "document", title: d.title, subtitle: d.category, route: "/documents" });
-      }
-    }
-    for (const v of vendors) {
-      if (v.name?.toLowerCase().includes(q) || v.category?.toLowerCase().includes(q)) {
-        results.push({ id: v.id, type: "vendor", title: v.name, subtitle: v.category, route: "/vendors" });
       }
     }
   }
@@ -161,7 +148,7 @@ export function GlobalSearch({ isOpen, onClose, onNavigate, associationId }: Glo
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
             onKeyDown={handleKeyDown}
-            placeholder="Search notices, meetings, documents, vendors..."
+            placeholder="Search notices, meetings, documents..."
             className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground/60"
           />
           {query && (

@@ -13,20 +13,8 @@ import type {
   InsertNotice,
   Meeting,
   InsertMeeting,
-  Ticket,
-  InsertTicket,
-  InsurancePolicy,
-  InsertInsurancePolicy,
-  MailingRequest,
-  InsertMailingRequest,
-  OnboardingChecklist,
-  InsertOnboardingChecklist,
-  AccountingItem,
-  InsertAccountingItem,
-  Invoice,
-  InsertInvoice,
 } from "@shared/schema";
-import type { IStorage, CincSettings, Vendor, AssociationDocument, BrandingData } from "./storage";
+import type { IStorage, CincSettings, AssociationDocument, BrandingData } from "./storage";
 
 function uid(): string {
   return crypto.randomUUID();
@@ -296,461 +284,6 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
 
-  // ── Tickets ──
-  async listTickets(associationId: string): Promise<Ticket[]> {
-    const rows = await db.select().from(s.tickets)
-      .where(eq(s.tickets.associationId, associationId))
-      .orderBy(desc(s.tickets.createdAt));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, title: r.title, description: r.description ?? undefined,
-      status: r.status as Ticket["status"], priority: r.priority as Ticket["priority"],
-      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async listAllTickets(): Promise<Ticket[]> {
-    const rows = await db.select().from(s.tickets).orderBy(desc(s.tickets.createdAt));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, title: r.title, description: r.description ?? undefined,
-      status: r.status as Ticket["status"], priority: r.priority as Ticket["priority"],
-      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async getTicket(id: string): Promise<Ticket | undefined> {
-    const r = await db.query.tickets.findFirst({ where: eq(s.tickets.id, id) });
-    if (!r) return undefined;
-    return {
-      id: r.id, associationId: r.associationId, title: r.title, description: r.description ?? undefined,
-      status: r.status as Ticket["status"], priority: r.priority as Ticket["priority"],
-      assignee: r.assignee ?? undefined, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    };
-  }
-
-  async createTicket(input: InsertTicket, createdBy: string): Promise<Ticket> {
-    const id = uid();
-    const ticket: Ticket = { id, ...input, createdBy, createdAt: now(), organizationId: 1 };
-    await db.insert(s.tickets).values({
-      id, associationId: input.associationId, title: input.title,
-      description: input.description, status: input.status || "open",
-      priority: input.priority || "medium", assignee: input.assignee,
-      createdBy, createdAt: now(),
-    });
-    return ticket;
-  }
-
-  async updateTicket(id: string, data: Partial<InsertTicket>): Promise<Ticket | null> {
-    const existing = await this.getTicket(id);
-    if (!existing) return null;
-    const updated = { ...existing, ...data };
-    await db.update(s.tickets).set(data).where(eq(s.tickets.id, id));
-    return updated;
-  }
-
-  async deleteTicket(id: string): Promise<boolean> {
-    const result = await db.delete(s.tickets).where(eq(s.tickets.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  // ── Insurance Policies ──
-  async listInsurancePolicies(associationId: string): Promise<InsurancePolicy[]> {
-    const rows = await db.select().from(s.insurancePolicies)
-      .where(eq(s.insurancePolicies.associationId, associationId))
-      .orderBy(asc(s.insurancePolicies.expirationDate));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, carrier: r.carrier,
-      policyNumber: r.policyNumber, coverageType: r.coverageType,
-      premium: r.premium ?? undefined, effectiveDate: r.effectiveDate,
-      expirationDate: r.expirationDate, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async getInsurancePolicy(id: string): Promise<InsurancePolicy | undefined> {
-    const r = await db.query.insurancePolicies.findFirst({ where: eq(s.insurancePolicies.id, id) });
-    if (!r) return undefined;
-    return {
-      id: r.id, associationId: r.associationId, carrier: r.carrier,
-      policyNumber: r.policyNumber, coverageType: r.coverageType,
-      premium: r.premium ?? undefined, effectiveDate: r.effectiveDate,
-      expirationDate: r.expirationDate, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    };
-  }
-
-  async createInsurancePolicy(input: InsertInsurancePolicy, createdBy: string): Promise<InsurancePolicy> {
-    const id = uid();
-    const policy: InsurancePolicy = { id, ...input, createdBy, createdAt: now(), organizationId: 1 };
-    await db.insert(s.insurancePolicies).values({
-      id, associationId: input.associationId, carrier: input.carrier,
-      policyNumber: input.policyNumber, coverageType: input.coverageType,
-      premium: input.premium, effectiveDate: input.effectiveDate,
-      expirationDate: input.expirationDate, notes: input.notes,
-      createdBy, createdAt: now(),
-    });
-    return policy;
-  }
-
-  async updateInsurancePolicy(id: string, data: Partial<InsertInsurancePolicy>): Promise<InsurancePolicy | null> {
-    const existing = await this.getInsurancePolicy(id);
-    if (!existing) return null;
-    const updated = { ...existing, ...data };
-    await db.update(s.insurancePolicies).set(data).where(eq(s.insurancePolicies.id, id));
-    return updated;
-  }
-
-  async deleteInsurancePolicy(id: string): Promise<boolean> {
-    const result = await db.delete(s.insurancePolicies).where(eq(s.insurancePolicies.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  // ── Mailing Requests ──
-  async listMailingRequests(associationId: string): Promise<MailingRequest[]> {
-    const rows = await db.select().from(s.mailingRequests)
-      .where(eq(s.mailingRequests.associationId, associationId))
-      .orderBy(desc(s.mailingRequests.createdAt));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, title: r.title,
-      description: r.description ?? undefined, recipientCount: r.recipientCount ?? undefined,
-      mailingType: r.mailingType, status: r.status as MailingRequest["status"],
-      requestedDate: r.requestedDate, targetMailDate: r.targetMailDate ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async getMailingRequest(id: string): Promise<MailingRequest | undefined> {
-    const r = await db.query.mailingRequests.findFirst({ where: eq(s.mailingRequests.id, id) });
-    if (!r) return undefined;
-    return {
-      id: r.id, associationId: r.associationId, title: r.title,
-      description: r.description ?? undefined, recipientCount: r.recipientCount ?? undefined,
-      mailingType: r.mailingType, status: r.status as MailingRequest["status"],
-      requestedDate: r.requestedDate, targetMailDate: r.targetMailDate ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    };
-  }
-
-  async createMailingRequest(input: InsertMailingRequest, createdBy: string): Promise<MailingRequest> {
-    const id = uid();
-    const mailing: MailingRequest = { id, ...input, requestedDate: now(), createdBy, createdAt: now(), organizationId: 1 };
-    await db.insert(s.mailingRequests).values({
-      id, associationId: input.associationId, title: input.title,
-      description: input.description, recipientCount: input.recipientCount,
-      mailingType: input.mailingType, status: input.status || "draft",
-      requestedDate: now(), targetMailDate: input.targetMailDate,
-      createdBy, createdAt: now(),
-    });
-    return mailing;
-  }
-
-  async updateMailingRequest(id: string, data: Partial<InsertMailingRequest>): Promise<MailingRequest | null> {
-    const existing = await this.getMailingRequest(id);
-    if (!existing) return null;
-    const updated = { ...existing, ...data };
-    await db.update(s.mailingRequests).set(data).where(eq(s.mailingRequests.id, id));
-    return updated;
-  }
-
-  async deleteMailingRequest(id: string): Promise<boolean> {
-    const result = await db.delete(s.mailingRequests).where(eq(s.mailingRequests.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  // ── Onboarding Checklists ──
-  async listOnboardingChecklists(associationId: string): Promise<OnboardingChecklist[]> {
-    const rows = await db.select().from(s.onboardingChecklists)
-      .where(eq(s.onboardingChecklists.associationId, associationId))
-      .orderBy(desc(s.onboardingChecklists.createdAt));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, title: r.title,
-      items: (r.items as any[]) || [], createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async getOnboardingChecklist(id: string): Promise<OnboardingChecklist | undefined> {
-    const r = await db.query.onboardingChecklists.findFirst({ where: eq(s.onboardingChecklists.id, id) });
-    if (!r) return undefined;
-    return {
-      id: r.id, associationId: r.associationId, title: r.title,
-      items: (r.items as any[]) || [], createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    };
-  }
-
-  async createOnboardingChecklist(input: InsertOnboardingChecklist, createdBy: string): Promise<OnboardingChecklist> {
-    const id = uid();
-    const items = (input.items || []).map((item) => ({
-      id: uid(), label: item.label, completed: false,
-    }));
-    const checklist: OnboardingChecklist = { id, associationId: input.associationId, title: input.title, items, createdBy, createdAt: now(), organizationId: 1 };
-    await db.insert(s.onboardingChecklists).values({
-      id, associationId: input.associationId, title: input.title,
-      items, createdBy, createdAt: now(),
-    });
-    return checklist;
-  }
-
-  async updateOnboardingChecklist(id: string, data: Partial<InsertOnboardingChecklist>): Promise<OnboardingChecklist | null> {
-    const existing = await this.getOnboardingChecklist(id);
-    if (!existing) return null;
-    const updated: OnboardingChecklist = {
-      ...existing,
-      ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.associationId !== undefined ? { associationId: data.associationId } : {}),
-    };
-    await db.update(s.onboardingChecklists).set({
-      ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.associationId !== undefined ? { associationId: data.associationId } : {}),
-    }).where(eq(s.onboardingChecklists.id, id));
-    return updated;
-  }
-
-  async deleteOnboardingChecklist(id: string): Promise<boolean> {
-    const result = await db.delete(s.onboardingChecklists).where(eq(s.onboardingChecklists.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  async toggleOnboardingItem(checklistId: string, itemId: string): Promise<OnboardingChecklist | null> {
-    const checklist = await this.getOnboardingChecklist(checklistId);
-    if (!checklist) return null;
-    const items = checklist.items.map((item) => {
-      if (item.id !== itemId) return item;
-      const completed = !item.completed;
-      return { ...item, completed, completedAt: completed ? now() : undefined };
-    });
-    await db.update(s.onboardingChecklists).set({ items }).where(eq(s.onboardingChecklists.id, checklistId));
-    return { ...checklist, items };
-  }
-
-  // ── Accounting Items ──
-  async listAccountingItems(associationId: string): Promise<AccountingItem[]> {
-    const rows = await db.select().from(s.accountingItems)
-      .where(eq(s.accountingItems.associationId, associationId))
-      .orderBy(desc(s.accountingItems.dueDate));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, description: r.description,
-      type: r.type, amount: r.amount, amountPaid: r.amountPaid,
-      status: r.status as AccountingItem["status"], dueDate: r.dueDate,
-      unit: r.unit ?? undefined, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async getAccountingItem(id: string): Promise<AccountingItem | undefined> {
-    const r = await db.query.accountingItems.findFirst({ where: eq(s.accountingItems.id, id) });
-    if (!r) return undefined;
-    return {
-      id: r.id, associationId: r.associationId, description: r.description,
-      type: r.type, amount: r.amount, amountPaid: r.amountPaid,
-      status: r.status as AccountingItem["status"], dueDate: r.dueDate,
-      unit: r.unit ?? undefined, notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    };
-  }
-
-  async createAccountingItem(input: InsertAccountingItem, createdBy: string): Promise<AccountingItem> {
-    const id = uid();
-    const item: AccountingItem = { id, ...input, amountPaid: input.amountPaid ?? 0, createdBy, createdAt: now(), organizationId: 1 };
-    await db.insert(s.accountingItems).values({
-      id, associationId: input.associationId, description: input.description,
-      type: input.type, amount: input.amount, amountPaid: input.amountPaid ?? 0,
-      status: input.status || "outstanding", dueDate: input.dueDate,
-      unit: input.unit, notes: input.notes, createdBy, createdAt: now(),
-    });
-    return item;
-  }
-
-  async updateAccountingItem(id: string, data: Partial<InsertAccountingItem>): Promise<AccountingItem | null> {
-    const existing = await this.getAccountingItem(id);
-    if (!existing) return null;
-    const updated = { ...existing, ...data };
-    await db.update(s.accountingItems).set(data).where(eq(s.accountingItems.id, id));
-    return updated;
-  }
-
-  async deleteAccountingItem(id: string): Promise<boolean> {
-    const result = await db.delete(s.accountingItems).where(eq(s.accountingItems.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  // ── Invoices ──
-  async listInvoices(associationId: string): Promise<Invoice[]> {
-    const rows = await db.select().from(s.invoices)
-      .where(eq(s.invoices.associationId, associationId))
-      .orderBy(desc(s.invoices.invoiceDate));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, vendor: r.vendor,
-      invoiceNumber: r.invoiceNumber ?? undefined, invoiceDate: r.invoiceDate,
-      totalAmount: r.totalAmount, status: r.status as Invoice["status"],
-      lineItems: (r.lineItems as any[]) || [], notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async getInvoice(id: string): Promise<Invoice | undefined> {
-    const r = await db.query.invoices.findFirst({ where: eq(s.invoices.id, id) });
-    if (!r) return undefined;
-    return {
-      id: r.id, associationId: r.associationId, vendor: r.vendor,
-      invoiceNumber: r.invoiceNumber ?? undefined, invoiceDate: r.invoiceDate,
-      totalAmount: r.totalAmount, status: r.status as Invoice["status"],
-      lineItems: (r.lineItems as any[]) || [], notes: r.notes ?? undefined,
-      createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    };
-  }
-
-  async createInvoice(input: InsertInvoice, createdBy: string): Promise<Invoice> {
-    const id = uid();
-    const lineItems = (input.lineItems || []).map((li) => ({
-      id: uid(), description: li.description, amount: li.amount,
-      category: li.category, glCode: li.glCode,
-    }));
-    const invoice: Invoice = {
-      id, associationId: input.associationId, vendor: input.vendor,
-      invoiceNumber: input.invoiceNumber, invoiceDate: input.invoiceDate,
-      totalAmount: input.totalAmount, status: "uploaded", lineItems,
-      notes: input.notes, createdBy, createdAt: now(), organizationId: 1,
-    };
-    await db.insert(s.invoices).values({
-      id, associationId: input.associationId, vendor: input.vendor,
-      invoiceNumber: input.invoiceNumber, invoiceDate: input.invoiceDate,
-      totalAmount: input.totalAmount, status: "uploaded", lineItems,
-      notes: input.notes, createdBy, createdAt: now(),
-    });
-    return invoice;
-  }
-
-  async updateInvoice(id: string, data: Partial<InsertInvoice> & { status?: Invoice["status"] }): Promise<Invoice | null> {
-    const existing = await this.getInvoice(id);
-    if (!existing) return null;
-    const { lineItems, ...rest } = data;
-    const newLineItems = lineItems !== undefined
-      ? lineItems.map((li) => ({ id: uid(), description: li.description, amount: li.amount, category: li.category, glCode: li.glCode }))
-      : undefined;
-    const updated: Invoice = {
-      ...existing, ...rest,
-      ...(newLineItems !== undefined ? { lineItems: newLineItems } : {}),
-    };
-    await db.update(s.invoices).set({
-      ...rest,
-      ...(newLineItems !== undefined ? { lineItems: newLineItems } : {}),
-    }).where(eq(s.invoices.id, id));
-    return updated;
-  }
-
-  async deleteInvoice(id: string): Promise<boolean> {
-    const result = await db.delete(s.invoices).where(eq(s.invoices.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  // ── Vendors ──
-  async listVendors(associationId: string): Promise<Vendor[]> {
-    const rows = await db.select().from(s.vendors)
-      .where(eq(s.vendors.associationId, associationId))
-      .orderBy(asc(s.vendors.name));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, name: r.name,
-      contactName: r.contactName, phone: r.phone, email: r.email,
-      category: r.category, status: r.status as "active" | "inactive",
-      insuranceExpiry: r.insuranceExpiry, notes: r.notes,
-      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async listAllVendors(): Promise<Vendor[]> {
-    const rows = await db.select().from(s.vendors).orderBy(asc(s.vendors.name));
-    return rows.map((r) => ({
-      id: r.id, associationId: r.associationId, name: r.name,
-      contactName: r.contactName, phone: r.phone, email: r.email,
-      category: r.category, status: r.status as "active" | "inactive",
-      insuranceExpiry: r.insuranceExpiry, notes: r.notes,
-      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    }));
-  }
-
-  async getVendor(id: string): Promise<Vendor | undefined> {
-    const r = await db.query.vendors.findFirst({ where: eq(s.vendors.id, id) });
-    if (!r) return undefined;
-    return {
-      id: r.id, associationId: r.associationId, name: r.name,
-      contactName: r.contactName, phone: r.phone, email: r.email,
-      category: r.category, status: r.status as "active" | "inactive",
-      insuranceExpiry: r.insuranceExpiry, notes: r.notes,
-      cincVendorId: r.cincVendorId, createdBy: r.createdBy, createdAt: r.createdAt, organizationId: (r as any).organizationId ?? 1,
-    };
-  }
-
-  async createVendor(input: Omit<Vendor, "id" | "createdAt">, createdBy: string): Promise<Vendor> {
-    const id = uid();
-    const vendor: Vendor = { id, ...input, createdBy, createdAt: now() };
-    await db.insert(s.vendors).values({
-      id, associationId: input.associationId, name: input.name,
-      contactName: input.contactName, phone: input.phone, email: input.email,
-      category: input.category, status: input.status, insuranceExpiry: input.insuranceExpiry,
-      notes: input.notes, cincVendorId: input.cincVendorId, createdBy, createdAt: now(),
-    });
-    return vendor;
-  }
-
-  async updateVendor(id: string, data: Partial<Vendor>): Promise<Vendor | null> {
-    const existing = await this.getVendor(id);
-    if (!existing) return null;
-    const updated = { ...existing, ...data };
-    await db.update(s.vendors).set(data).where(eq(s.vendors.id, id));
-    return updated;
-  }
-
-  async deleteVendor(id: string): Promise<boolean> {
-    const result = await db.delete(s.vendors).where(eq(s.vendors.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  // ── CINC API Settings ──
-  async getCincSettings(): Promise<CincSettings> {
-    const row = await db.query.cincSettings.findFirst({ where: eq(s.cincSettings.id, "singleton") });
-    if (!row) {
-      // Create default settings
-      const defaults: CincSettings = {
-        clientId: "", clientSecret: "", environment: "uat", scope: "cincapi.all",
-        enabled: false, lastSyncAt: null, syncStatus: "idle", syncLog: [],
-      };
-      await db.insert(s.cincSettings).values({
-        id: "singleton", clientId: "", clientSecret: "", environment: "uat",
-        scope: "cincapi.all", enabled: false, syncStatus: "idle", syncLog: [],
-      });
-      return defaults;
-    }
-    return {
-      clientId: row.clientId, clientSecret: row.clientSecret,
-      environment: row.environment as "uat" | "production", scope: row.scope,
-      enabled: row.enabled, lastSyncAt: row.lastSyncAt,
-      syncStatus: row.syncStatus as CincSettings["syncStatus"],
-      syncLog: (row.syncLog as any[]) || [],
-      lastSyncData: row.lastSyncData as CincSettings["lastSyncData"],
-    };
-  }
-
-  async updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings> {
-    const current = await this.getCincSettings();
-    const updated = { ...current, ...data };
-    await db.update(s.cincSettings).set({
-      clientId: updated.clientId, clientSecret: updated.clientSecret,
-      environment: updated.environment, scope: updated.scope,
-      enabled: updated.enabled, lastSyncAt: updated.lastSyncAt,
-      syncStatus: updated.syncStatus, syncLog: updated.syncLog,
-      lastSyncData: updated.lastSyncData,
-    }).where(eq(s.cincSettings.id, "singleton"));
-    return updated;
-  }
-
-  async addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void> {
-    const settings = await this.getCincSettings();
-    settings.syncLog.unshift({ timestamp: now(), message, type });
-    if (settings.syncLog.length > 50) {
-      settings.syncLog = settings.syncLog.slice(0, 50);
-    }
-    await db.update(s.cincSettings).set({ syncLog: settings.syncLog }).where(eq(s.cincSettings.id, "singleton"));
-  }
-
   // ── Documents ──
   async listDocuments(associationId: string): Promise<AssociationDocument[]> {
     const rows = await db.select().from(s.documents)
@@ -828,6 +361,53 @@ export class DatabaseStorage implements IStorage {
 
   async setDocumentFile(docId: string, filename: string | null): Promise<void> {
     await db.update(s.documents).set({ filename, updatedAt: now() }).where(eq(s.documents.id, docId));
+  }
+
+  // ── CINC API Settings ──
+  async getCincSettings(): Promise<CincSettings> {
+    const row = await db.query.cincSettings.findFirst({ where: eq(s.cincSettings.id, "singleton") });
+    if (!row) {
+      // Create default settings
+      const defaults: CincSettings = {
+        clientId: "", clientSecret: "", environment: "uat", scope: "cincapi.all",
+        enabled: false, lastSyncAt: null, syncStatus: "idle", syncLog: [],
+      };
+      await db.insert(s.cincSettings).values({
+        id: "singleton", clientId: "", clientSecret: "", environment: "uat",
+        scope: "cincapi.all", enabled: false, syncStatus: "idle", syncLog: [],
+      });
+      return defaults;
+    }
+    return {
+      clientId: row.clientId, clientSecret: row.clientSecret,
+      environment: row.environment as "uat" | "production", scope: row.scope,
+      enabled: row.enabled, lastSyncAt: row.lastSyncAt,
+      syncStatus: row.syncStatus as CincSettings["syncStatus"],
+      syncLog: (row.syncLog as any[]) || [],
+      lastSyncData: row.lastSyncData as CincSettings["lastSyncData"],
+    };
+  }
+
+  async updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings> {
+    const current = await this.getCincSettings();
+    const updated = { ...current, ...data };
+    await db.update(s.cincSettings).set({
+      clientId: updated.clientId, clientSecret: updated.clientSecret,
+      environment: updated.environment, scope: updated.scope,
+      enabled: updated.enabled, lastSyncAt: updated.lastSyncAt,
+      syncStatus: updated.syncStatus, syncLog: updated.syncLog,
+      lastSyncData: updated.lastSyncData,
+    }).where(eq(s.cincSettings.id, "singleton"));
+    return updated;
+  }
+
+  async addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void> {
+    const settings = await this.getCincSettings();
+    settings.syncLog.unshift({ timestamp: now(), message, type });
+    if (settings.syncLog.length > 50) {
+      settings.syncLog = settings.syncLog.slice(0, 50);
+    }
+    await db.update(s.cincSettings).set({ syncLog: settings.syncLog }).where(eq(s.cincSettings.id, "singleton"));
   }
 
   // ── Branding ──

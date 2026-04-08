@@ -48,45 +48,6 @@ export interface CincSettings {
   };
 }
 
-// ── Document type ──
-export interface AssociationDocument {
-  id: string;
-  associationId: string;
-  title: string;
-  category: string;
-  description: string | null;
-  filename?: string;
-  fileSize?: number;
-  status: "current" | "archived" | "draft" | "expired";
-  effectiveDate: string | null;
-  expirationDate: string | null;
-  retentionYears: number | null;
-  isPublic: boolean;
-  tags: string[];
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-  organizationId: number;
-}
-
-// Florida HOA/POA document categories per F.S. 720.303 & 718.111
-export const FLORIDA_DOCUMENT_CATEGORIES = [
-  { id: "governing", label: "Governing Documents", description: "Declaration of Covenants, Articles of Incorporation, Bylaws, Amendments", retention: "Permanent", statute: "720.303(4)(a)2-5" },
-  { id: "rules", label: "Rules & Regulations", description: "Current community rules and policies", retention: "Permanent", statute: "720.303(4)(a)5" },
-  { id: "financial", label: "Financial Records", description: "Budgets, financial statements, tax returns, audits", retention: "7 years", statute: "720.303(4)(a)10" },
-  { id: "meeting_minutes", label: "Meeting Minutes", description: "Board and membership meeting minutes", retention: "Permanent", statute: "720.303(4)(a)6" },
-  { id: "insurance", label: "Insurance Policies", description: "Current insurance policies and certificates", retention: "Current + 7 years", statute: "720.303(4)(a)8" },
-  { id: "contracts", label: "Contracts & Agreements", description: "Management agreements, leases, vendor contracts", retention: "Current + 7 years", statute: "720.303(4)(a)9" },
-  { id: "plans_permits", label: "Plans, Permits & Warranties", description: "Construction plans, building permits, warranties", retention: "Permanent", statute: "720.303(4)(a)1" },
-  { id: "elections", label: "Elections & Voting Records", description: "Ballots, proxies, sign-in sheets, voting records", retention: "1 year", statute: "720.303(4)(a)12" },
-  { id: "assessments", label: "Assessment Records", description: "Assessment notices, lien records, estoppel certificates", retention: "7 years", statute: "720.303(4)" },
-  { id: "correspondence", label: "Official Correspondence", description: "Board correspondence, legal notices, violation letters", retention: "7 years", statute: "720.303" },
-  { id: "reserve_study", label: "Reserve Studies", description: "Reserve fund studies and structural integrity reports", retention: "15 years", statute: "718.111(12)(a)15" },
-  { id: "disclosure", label: "Disclosure Documents", description: "Disclosure summaries, FAQ sheets", retention: "Current", statute: "720.401" },
-  { id: "deeds_property", label: "Deeds & Property Records", description: "Deeds to common property, plats, surveys", retention: "Permanent", statute: "720.307(3)(a)" },
-  { id: "other", label: "Other Documents", description: "Miscellaneous association records", retention: "7 years", statute: "" },
-] as const;
-
 export interface IStorage {
   // Auth
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -130,6 +91,11 @@ export interface IStorage {
   updateMeeting(id: string, data: Partial<InsertMeeting>): Promise<Meeting | null>;
   deleteMeeting(id: string): Promise<boolean>;
 
+  // CINC API Settings
+  getCincSettings(): Promise<CincSettings>;
+  updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings>;
+  addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void>;
+
   // Documents
   listDocuments(associationId: string): Promise<AssociationDocument[]>;
   listAllDocuments(): Promise<AssociationDocument[]>;
@@ -138,11 +104,6 @@ export interface IStorage {
   updateDocument(id: string, data: Partial<AssociationDocument>): Promise<AssociationDocument | null>;
   deleteDocument(id: string): Promise<boolean>;
   setDocumentFile(docId: string, filename: string | null): Promise<void>;
-
-  // CINC API Settings
-  getCincSettings(): Promise<CincSettings>;
-  updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings>;
-  addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void>;
 
   // Branding
   getBranding(): Promise<BrandingData>;
@@ -166,12 +127,6 @@ export class MemStorage implements IStorage {
     lastSyncAt: null,
     syncStatus: "idle",
     syncLog: [],
-  };
-  private branding: BrandingData = {
-    companyName: "Vine Management",
-    primaryColor: "#317C3C",
-    sidebarColor: "#1B3E1E",
-    accentColor: "#8BC53F",
   };
 
   constructor() {
@@ -212,7 +167,7 @@ export class MemStorage implements IStorage {
       organizationId: 1,
     });
 
-    // Seed notices
+    // Seed some notices
     const demoNotices = [
       { date: "2025-02-18", title: "Board of Directors Meeting", type: "Board Meeting", description: "Regular board meeting to discuss community matters." },
       { date: "2025-03-04", title: "Board of Directors Meeting", type: "Board Meeting", description: "Monthly board meeting." },
@@ -250,24 +205,73 @@ export class MemStorage implements IStorage {
       });
     }
 
-    // Seed documents
-    const demoDocuments = [
-      { title: "Declaration of Covenants", category: "governing", description: "Original declaration of covenants, conditions, and restrictions", status: "current" as const, effectiveDate: "2020-01-01", expirationDate: null, retentionYears: null, isPublic: true, tags: ["covenant", "governing"] },
-      { title: "2024 Annual Budget", category: "financial", description: "Approved annual budget for fiscal year 2024", status: "current" as const, effectiveDate: "2024-01-01", expirationDate: "2024-12-31", retentionYears: 7, isPublic: false, tags: ["budget", "2024"] },
-      { title: "Board Meeting Minutes - Jan 2025", category: "meeting_minutes", description: "Minutes from January 2025 board meeting", status: "current" as const, effectiveDate: "2025-01-14", expirationDate: null, retentionYears: null, isPublic: true, tags: ["minutes", "board"] },
+    // Seed documents (RSPOA)
+    const demoDocuments: Array<{
+      title: string; category: string; description: string;
+      status: "current" | "archived"; effectiveDate: string | null;
+      expirationDate: string | null; retentionYears: number | null;
+      isPublic: boolean; tags: string[];
+    }> = [
+      { title: "Declaration of Covenants & Restrictions", category: "governing", description: "Original recorded declaration of covenants, conditions, and restrictions for Rainbow Springs POA.", status: "current", effectiveDate: "2005-06-15", expirationDate: null, retentionYears: null, isPublic: true, tags: ["CC&R", "declaration"] },
+      { title: "Articles of Incorporation", category: "governing", description: "Articles of Incorporation filed with the Florida Division of Corporations.", status: "current", effectiveDate: "2005-06-01", expirationDate: null, retentionYears: null, isPublic: true, tags: ["corporate"] },
+      { title: "Bylaws", category: "governing", description: "Current bylaws of the association as amended.", status: "current", effectiveDate: "2005-06-15", expirationDate: null, retentionYears: null, isPublic: true, tags: ["bylaws"] },
+      { title: "Amendment to CC&R - Rental Restrictions", category: "governing", description: "2023 Amendment regarding rental restrictions and lease approval process.", status: "current", effectiveDate: "2023-09-01", expirationDate: null, retentionYears: null, isPublic: true, tags: ["amendment", "rental"] },
+      { title: "Community Rules & Regulations", category: "rules", description: "Current community rules covering architectural standards, common areas, and conduct.", status: "current", effectiveDate: "2024-01-01", expirationDate: null, retentionYears: null, isPublic: true, tags: ["rules"] },
+      { title: "2025 Annual Budget", category: "financial", description: "Approved annual operating budget for fiscal year 2025.", status: "current", effectiveDate: "2025-01-01", expirationDate: "2025-12-31", retentionYears: 7, isPublic: false, tags: ["budget", "2025"] },
+      { title: "2024 Annual Financial Report", category: "financial", description: "Year-end audited financial statements for 2024.", status: "current", effectiveDate: "2024-01-01", expirationDate: null, retentionYears: 7, isPublic: false, tags: ["audit", "2024"] },
+      { title: "Board Meeting Minutes - Feb 2025", category: "meeting_minutes", description: "Minutes from the February 18, 2025 board of directors meeting.", status: "current", effectiveDate: "2025-02-18", expirationDate: null, retentionYears: null, isPublic: true, tags: ["minutes", "board"] },
+      { title: "Annual Meeting Minutes - Jan 2025", category: "meeting_minutes", description: "Minutes from the January 14, 2025 annual members meeting.", status: "current", effectiveDate: "2025-01-14", expirationDate: null, retentionYears: null, isPublic: true, tags: ["minutes", "annual"] },
+      { title: "General Liability Policy 2025", category: "insurance", description: "State Farm general liability insurance certificate.", status: "current", effectiveDate: "2025-01-01", expirationDate: "2026-01-01", retentionYears: 7, isPublic: false, tags: ["liability"] },
+      { title: "Management Agreement - Vine Management", category: "contracts", description: "Current management services agreement with Vine Management Group.", status: "current", effectiveDate: "2024-07-01", expirationDate: "2026-06-30", retentionYears: 7, isPublic: false, tags: ["management", "contract"] },
+      { title: "Disclosure Summary", category: "disclosure", description: "HOA disclosure summary required under F.S. 720.401.", status: "current", effectiveDate: "2025-01-01", expirationDate: null, retentionYears: null, isPublic: true, tags: ["disclosure"] },
     ];
-    for (const d of demoDocuments) {
-      const did = uid();
-      this.documents.set(did, {
-        id: did,
+    for (const doc of demoDocuments) {
+      const docId = uid();
+      this.documents.set(docId, {
+        id: docId,
         associationId: rspoaId,
-        ...d,
+        title: doc.title,
+        category: doc.category,
+        description: doc.description,
+        status: doc.status,
+        effectiveDate: doc.effectiveDate,
+        expirationDate: doc.expirationDate,
+        retentionYears: doc.retentionYears,
+        isPublic: doc.isPublic,
+        tags: doc.tags,
         createdBy: adminId,
         createdAt: now(),
-        updatedAt: now(),
         organizationId: 1,
+        updatedAt: now(),
       });
     }
+
+    // ── Second Association: Cypress Pointe HOA ──
+    const cpId = uid();
+    this.associations.set(cpId, {
+      id: cpId,
+      name: "Cypress Pointe HOA",
+      slug: "cypress-pointe",
+      primaryColor: "#1E40AF",
+      accentColor: "#3B82F6",
+      darkColor: "#1E3A5F",
+      createdAt: now(),
+      organizationId: 1,
+    });
+
+    // Seed a notice for Cypress Pointe
+    const cpNoticeId = uid();
+    this.notices.set(cpNoticeId, {
+      id: cpNoticeId,
+      associationId: cpId,
+      date: "2025-03-10",
+      title: "Spring Community Cleanup Day",
+      type: "Event",
+      description: "Join us for our annual spring cleanup.",
+      postedDate: now(),
+      createdBy: adminId,
+      organizationId: 1,
+    });
   }
 
   // ── Auth ──
@@ -280,57 +284,68 @@ export class MemStorage implements IStorage {
 
   // ── Magic Codes ──
   async createMagicCode(email: string): Promise<string> {
-    const code = Math.random().toString().slice(2, 8).padStart(6, "0");
-    this.magicCodes.set(email, { code, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+    // 6-digit numeric code, valid for 10 minutes
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const key = email.toLowerCase();
+    this.magicCodes.set(key, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
     return code;
   }
   async verifyMagicCode(email: string, code: string): Promise<boolean> {
-    const entry = this.magicCodes.get(email);
+    const key = email.toLowerCase();
+    const entry = this.magicCodes.get(key);
     if (!entry) return false;
-    if (entry.code !== code || entry.expiresAt < Date.now()) return false;
-    this.magicCodes.delete(email);
+    if (entry.expiresAt < Date.now()) {
+      this.magicCodes.delete(key);
+      return false;
+    }
+    if (entry.code !== code) return false;
+    this.magicCodes.delete(key); // one-time use
     return true;
   }
 
   // ── Users ──
   async listUsers(): Promise<SafeUser[]> {
-    return [...this.users.values()].map(({ passwordHash, ...u }) => u as SafeUser);
+    return [...this.users.values()].map((u) => {
+      const safe: SafeUser = { ...u, associations: this.getUserAssociations(u.id) };
+      return safe;
+    });
   }
   async createUser(input: InsertUser): Promise<SafeUser> {
     const id = uid();
-    const user: User = { id, ...input, active: true, createdAt: now(), organizationId: 1 };
+    const user: User = {
+      id,
+      email: input.email,
+      name: input.name,
+      role: input.role,
+      active: true,
+      authMethod: "magic_link",
+      createdAt: now(),
+      organizationId: 1,
+    };
     this.users.set(id, user);
-    const { passwordHash, ...safe } = user;
-    return safe as SafeUser;
+    return { ...user };
   }
   async updateUser(id: string, data: Partial<InsertUser>): Promise<SafeUser | null> {
-    const user = this.users.get(id);
-    if (!user) return null;
-    const updated = { ...user, ...data };
-    this.users.set(id, updated);
-    const { passwordHash, ...safe } = updated;
-    return safe as SafeUser;
+    const existing = this.users.get(id);
+    if (!existing) return null;
+    if (data.email) existing.email = data.email;
+    if (data.name) existing.name = data.name;
+    if (data.role) existing.role = data.role;
+    this.users.set(id, existing);
+    return { ...existing, associations: this.getUserAssociations(id) };
   }
   async deleteUser(id: string): Promise<boolean> {
+    this.userAssociations = this.userAssociations.filter((ua) => ua.userId !== id);
     return this.users.delete(id);
   }
 
   // ── User ↔ Association ──
   async getUserAssociations(userId: string): Promise<(UserAssociation & { associationName: string })[]> {
-    const user = this.users.get(userId);
-    if (user?.role === "super_admin") {
-      return [...this.associations.values()].map((a) => ({
-        userId,
-        associationId: a.id,
-        permission: "manage" as const,
-        associationName: a.name,
-      }));
-    }
     return this.userAssociations
       .filter((ua) => ua.userId === userId)
       .map((ua) => ({
         ...ua,
-        associationName: this.associations.get(ua.associationId)?.name || "",
+        associationName: this.associations.get(ua.associationId)?.name || "Unknown",
       }));
   }
   async setUserAssociations(userId: string, assignments: { associationId: string; permission: "manage" | "readonly" }[]): Promise<void> {
@@ -343,15 +358,15 @@ export class MemStorage implements IStorage {
     const user = this.users.get(userId);
     if (!user) return false;
     if (user.role === "super_admin") return true;
-    const ua = this.userAssociations.find((ua) => ua.userId === userId && ua.associationId === associationId);
+    const ua = this.userAssociations.find((x) => x.userId === userId && x.associationId === associationId);
     if (!ua) return false;
-    if (requireManage) return ua.permission === "manage";
+    if (requireManage && ua.permission !== "manage") return false;
     return true;
   }
 
   // ── Associations ──
   async listAssociations(): Promise<Association[]> {
-    return [...this.associations.values()];
+    return [...this.associations.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
   async getAssociation(id: string): Promise<Association | undefined> {
     return this.associations.get(id);
@@ -361,18 +376,22 @@ export class MemStorage implements IStorage {
   }
   async createAssociation(input: InsertAssociation): Promise<Association> {
     const id = uid();
-    const assoc: Association = { id, ...input, createdAt: now() };
+    const assoc: Association = { id, ...input, createdAt: now(), organizationId: input.organizationId || 1 };
     this.associations.set(id, assoc);
     return assoc;
   }
   async updateAssociation(id: string, data: Partial<InsertAssociation>): Promise<Association | null> {
-    const assoc = this.associations.get(id);
-    if (!assoc) return null;
-    const updated = { ...assoc, ...data };
+    const existing = this.associations.get(id);
+    if (!existing) return null;
+    const updated = { ...existing, ...data };
     this.associations.set(id, updated);
     return updated;
   }
   async deleteAssociation(id: string): Promise<boolean> {
+    for (const [nid, n] of this.notices) {
+      if (n.associationId === id) this.notices.delete(nid);
+    }
+    this.userAssociations = this.userAssociations.filter((ua) => ua.associationId !== id);
     return this.associations.delete(id);
   }
 
@@ -387,7 +406,16 @@ export class MemStorage implements IStorage {
   }
   async createNotice(input: InsertNotice, createdBy: string): Promise<Notice> {
     const id = uid();
-    const notice: Notice = { id, ...input, postedDate: now(), createdBy, organizationId: 1 };
+    const notice: Notice = {
+      id,
+      ...input,
+      description: input.description || "",
+      meetingUrl: input.meetingUrl || "",
+      pdfFilename: undefined,
+      postedDate: now(),
+      createdBy,
+      organizationId: 1,
+    };
     this.notices.set(id, notice);
     return notice;
   }
@@ -420,7 +448,17 @@ export class MemStorage implements IStorage {
   }
   async createMeeting(input: InsertMeeting, createdBy: string): Promise<Meeting> {
     const id = uid();
-    const meeting: Meeting = { id, ...input, createdBy, createdAt: now(), organizationId: 1 };
+    const meeting: Meeting = {
+      id,
+      ...input,
+      description: input.description || "",
+      videoUrl: input.videoUrl || "",
+      agendaUrl: input.agendaUrl || "",
+      minutesUrl: input.minutesUrl || "",
+      createdBy,
+      createdAt: now(),
+      organizationId: 1,
+    };
     this.meetings.set(id, meeting);
     return meeting;
   }
@@ -433,6 +471,21 @@ export class MemStorage implements IStorage {
   }
   async deleteMeeting(id: string): Promise<boolean> {
     return this.meetings.delete(id);
+  }
+
+  // ── CINC API Settings ──
+  async getCincSettings(): Promise<CincSettings> {
+    return { ...this.cincSettings };
+  }
+  async updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings> {
+    this.cincSettings = { ...this.cincSettings, ...data };
+    return { ...this.cincSettings };
+  }
+  async addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void> {
+    this.cincSettings.syncLog.unshift({ timestamp: now(), message, type });
+    if (this.cincSettings.syncLog.length > 50) {
+      this.cincSettings.syncLog = this.cincSettings.syncLog.slice(0, 50);
+    }
   }
 
   // ── Documents ──
@@ -473,30 +526,62 @@ export class MemStorage implements IStorage {
     }
   }
 
-  // ── CINC Settings ──
-  async getCincSettings(): Promise<CincSettings> {
-    return { ...this.cincSettings };
-  }
-  async updateCincSettings(data: Partial<CincSettings>): Promise<CincSettings> {
-    this.cincSettings = { ...this.cincSettings, ...data };
-    return { ...this.cincSettings };
-  }
-  async addCincSyncLog(message: string, type: "info" | "error" | "success"): Promise<void> {
-    this.cincSettings.syncLog.unshift({ timestamp: now(), message, type });
-    if (this.cincSettings.syncLog.length > 50) {
-      this.cincSettings.syncLog = this.cincSettings.syncLog.slice(0, 50);
-    }
-  }
-
   // ── Branding ──
+  private branding: BrandingData = {
+    companyName: "Vine Management",
+    primaryColor: "#317C3C",
+    sidebarColor: "#1B3E1E",
+    accentColor: "#8BC53F",
+  };
+
   async getBranding(): Promise<BrandingData> {
     return { ...this.branding };
   }
+
   async updateBranding(data: Partial<BrandingData>): Promise<BrandingData> {
     this.branding = { ...this.branding, ...data };
     return { ...this.branding };
   }
 }
+
+// ── Document type ──
+export interface AssociationDocument {
+  id: string;
+  associationId: string;
+  title: string;
+  category: string;
+  description: string | null;
+  filename?: string;
+  fileSize?: number;
+  status: "current" | "archived" | "draft" | "expired";
+  effectiveDate: string | null;
+  expirationDate: string | null;
+  retentionYears: number | null;
+  isPublic: boolean;
+  tags: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  organizationId: number;
+}
+
+// Florida HOA/POA document categories per F.S. 720.303 & 718.111
+export const FLORIDA_DOCUMENT_CATEGORIES = [
+  { id: "governing", label: "Governing Documents", description: "Declaration of Covenants, Articles of Incorporation, Bylaws, Amendments", retention: "Permanent", statute: "720.303(4)(a)2-5" },
+  { id: "rules", label: "Rules & Regulations", description: "Current community rules and policies", retention: "Permanent", statute: "720.303(4)(a)5" },
+  { id: "financial", label: "Financial Records", description: "Budgets, financial statements, tax returns, audits", retention: "7 years", statute: "720.303(4)(a)10" },
+  { id: "meeting_minutes", label: "Meeting Minutes", description: "Board and membership meeting minutes", retention: "Permanent", statute: "720.303(4)(a)6" },
+  { id: "insurance", label: "Insurance Policies", description: "Current insurance policies and certificates", retention: "Current + 7 years", statute: "720.303(4)(a)8" },
+  { id: "contracts", label: "Contracts & Agreements", description: "Management agreements, leases, vendor contracts", retention: "Current + 7 years", statute: "720.303(4)(a)9" },
+  { id: "plans_permits", label: "Plans, Permits & Warranties", description: "Construction plans, building permits, warranties", retention: "Permanent", statute: "720.303(4)(a)1" },
+  { id: "elections", label: "Elections & Voting Records", description: "Ballots, proxies, sign-in sheets, voting records", retention: "1 year", statute: "720.303(4)(a)12" },
+  { id: "assessments", label: "Assessment Records", description: "Assessment notices, lien records, estoppel certificates", retention: "7 years", statute: "720.303(4)" },
+  { id: "correspondence", label: "Official Correspondence", description: "Board correspondence, legal notices, violation letters", retention: "7 years", statute: "720.303" },
+  { id: "reserve_study", label: "Reserve Studies", description: "Reserve fund studies and structural integrity reports", retention: "15 years", statute: "718.111(12)(a)15" },
+  { id: "disclosure", label: "Disclosure Documents", description: "Disclosure summaries, FAQ sheets", retention: "Current", statute: "720.401" },
+  { id: "deeds_property", label: "Deeds & Property Records", description: "Deeds to common property, plats, surveys", retention: "Permanent", statute: "720.307(3)(a)" },
+  { id: "other", label: "Other Documents", description: "Miscellaneous association records", retention: "7 years", statute: "" },
+] as const;
 
 export let storage: IStorage = new MemStorage();
 
